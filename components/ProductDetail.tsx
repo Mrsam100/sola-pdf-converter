@@ -6,6 +6,14 @@
 import React, { useState, useRef } from 'react';
 import { Tool, ProcessState } from '../types';
 import { convertFile } from '../services/geminiService';
+import MergePDF from './MergePDF';
+import SplitPDF from './SplitPDF';
+import CompressPDF from './CompressPDF';
+import RotatePDF from './RotatePDF';
+import PDFToJPG from './PDFToJPG';
+import ImageToPDF from './ImageToPDF';
+import PDFToWord from './PDFToWord';
+import WordToPDF from './WordToPDF';
 
 interface ToolDetailProps {
   tool: Tool;
@@ -13,6 +21,34 @@ interface ToolDetailProps {
 }
 
 const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
+  // Route to specialized PDF components
+  if (tool.id === 'pdf-merge') {
+    return <MergePDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'pdf-split') {
+    return <SplitPDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'compress-pdf') {
+    return <CompressPDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'rotate-pdf') {
+    return <RotatePDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'pdf-jpg') {
+    return <PDFToJPG tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'jpg-pdf') {
+    return <ImageToPDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'pdf-word') {
+    return <PDFToWord tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'word-pdf') {
+    return <WordToPDF tool={tool} onBack={onBack} />;
+  }
+
+  // Default converter for other tools
+
   const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
   const [fileName, setFileName] = useState<string>('');
   const [fileObj, setFileObj] = useState<File | null>(null);

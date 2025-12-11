@@ -11,11 +11,11 @@ export const convertFile = async (file: File, toolId: string): Promise<string> =
 
     const ai = new GoogleGenAI({ apiKey });
     const base64Data = await fileToBase64(file);
-    
-    // Default config using gemini-2.5-flash for speed and efficiency
-    const model = 'gemini-2.5-flash';
+
+    // Default config using gemini-2.0-flash-exp for speed and efficiency
+    const modelName = 'gemini-2.0-flash-exp';
     let prompt = "Analyze this file.";
-    
+
     // Tailor prompt based on tool ID for specific output formats
     switch (toolId) {
         case 'ocr-text':
@@ -25,7 +25,7 @@ export const convertFile = async (file: File, toolId: string): Promise<string> =
             prompt = "Transcribe this audio file accurately. Return ONLY the transcript text. Do not include timestamps or speaker labels unless they are critical to understanding.";
             break;
         case 'pdf-word':
-        case 'word-pdf': 
+        case 'word-pdf':
             prompt = "Read this document and convert its content into a well-structured text format. Use Markdown headers (#, ##) for titles and bullet points for lists. Return ONLY the content.";
             break;
         case 'pdf-excel':
@@ -44,19 +44,20 @@ export const convertFile = async (file: File, toolId: string): Promise<string> =
 
     try {
        const response = await ai.models.generateContent({
-           model,
-           contents: {
+           model: modelName,
+           contents: [{
+               role: 'user',
                parts: [
                    { inlineData: { mimeType: file.type || 'application/octet-stream', data: base64Data } },
                    { text: prompt }
                ]
-           },
+           }],
            config: {
                // Ensure the model doesn't truncate important conversions
-               maxOutputTokens: 8192, 
+               maxOutputTokens: 8192,
            }
        });
-       
+
        return response.text || "No text could be extracted from this file.";
     } catch (e) {
         console.error("Conversion Error", e);
@@ -69,7 +70,7 @@ export const sendMessageToGemini = async (history: { role: 'user' | 'model'; tex
     if (!apiKey) throw new Error("API Key missing");
 
     const ai = new GoogleGenAI({ apiKey });
-    
+
     // Transform history to API format
     const chatHistory = history.map(msg => ({
         role: msg.role,
@@ -77,7 +78,7 @@ export const sendMessageToGemini = async (history: { role: 'user' | 'model'; tex
     }));
 
     const chat = ai.chats.create({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.0-flash-exp',
         history: chatHistory,
         config: {
             systemInstruction: "You are Aura, a sophisticated and helpful AI assistant for the Sola conversion suite. You are concise, polite, and professional. Your goal is to help users find the right tools or answer questions about file formats."
