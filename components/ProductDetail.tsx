@@ -14,6 +14,8 @@ import PDFToJPG from './PDFToJPG';
 import ImageToPDF from './ImageToPDF';
 import PDFToWord from './PDFToWord';
 import WordToPDF from './WordToPDF';
+import EncryptPDF from './EncryptPDF';
+import UnlockPDF from './UnlockPDF';
 
 interface ToolDetailProps {
   tool: Tool;
@@ -45,6 +47,12 @@ const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
   }
   if (tool.id === 'word-pdf') {
     return <WordToPDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'encrypt-pdf') {
+    return <EncryptPDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'unlock-pdf') {
+    return <UnlockPDF tool={tool} onBack={onBack} />;
   }
 
   // Default converter for other tools

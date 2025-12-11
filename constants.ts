@@ -80,6 +80,13 @@ export const TOOLS: Tool[] = [
     category: 'PDF',
     icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605'
   },
+  {
+    id: 'pdf-jpg',
+    name: 'PDF to JPG',
+    description: 'Convert PDF pages to images.',
+    category: 'PDF',
+    icon: '🖼️'
+  },
 
   // SECURITY & OCR
   {
@@ -87,14 +94,14 @@ export const TOOLS: Tool[] = [
     name: 'Unlock PDF',
     description: 'Remove passwords from PDF files.',
     category: 'Security',
-    icon: 'M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z'
+    icon: '🔓'
   },
   {
-    id: 'protect-pdf',
-    name: 'Protect PDF',
-    description: 'Encrypt your PDF with a password.',
+    id: 'encrypt-pdf',
+    name: 'Encrypt PDF',
+    description: 'Protect your PDF with a password.',
     category: 'Security',
-    icon: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z'
+    icon: '🔒'
   },
   {
     id: 'ocr-text',

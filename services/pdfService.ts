@@ -440,3 +440,109 @@ export const imagesToPDF = async (files: File[]): Promise<Uint8Array> => {
     const pdfBytes = await pdfDoc.save();
     return pdfBytes;
 };
+
+/**
+ * Encrypt a PDF with a password
+ * @param file - The PDF file to encrypt
+ * @param userPassword - Password for opening the PDF
+ * @param ownerPassword - Optional password for modifying PDF permissions (defaults to userPassword)
+ * @returns Promise<Uint8Array> - The encrypted PDF as a byte array
+ */
+export const encryptPDF = async (
+    file: File,
+    userPassword: string,
+    ownerPassword?: string
+): Promise<Uint8Array> => {
+    if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+        throw new Error('File is not a PDF');
+    }
+
+    if (!userPassword || userPassword.trim() === '') {
+        throw new Error('Password is required');
+    }
+
+    // Read the file
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await PDFDocument.load(arrayBuffer);
+
+    // Save with encryption
+    const encryptedPdfBytes = await pdf.save({
+        userPassword: userPassword,
+        ownerPassword: ownerPassword || userPassword,
+        permissions: {
+            printing: 'highResolution',
+            modifying: false,
+            copying: false,
+            annotating: false,
+            fillingForms: false,
+            contentAccessibility: true,
+            documentAssembly: false,
+        },
+    });
+
+    return encryptedPdfBytes;
+};
+
+/**
+ * Unlock (decrypt) a password-protected PDF
+ * @param file - The encrypted PDF file
+ * @param password - Password to unlock the PDF
+ * @returns Promise<Uint8Array> - The unlocked PDF as a byte array
+ */
+export const unlockPDF = async (
+    file: File,
+    password: string
+): Promise<Uint8Array> => {
+    if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+        throw new Error('File is not a PDF');
+    }
+
+    if (!password || password.trim() === '') {
+        throw new Error('Password is required');
+    }
+
+    try {
+        // Read the file
+        const arrayBuffer = await file.arrayBuffer();
+
+        // Try to load with password
+        const pdf = await PDFDocument.load(arrayBuffer, {
+            password: password,
+            ignoreEncryption: false,
+        });
+
+        // Save without encryption
+        const unlockedPdfBytes = await pdf.save();
+        return unlockedPdfBytes;
+    } catch (error) {
+        if (error instanceof Error && error.message.includes('password')) {
+            throw new Error('Incorrect password. Please try again.');
+        }
+        throw new Error(`Failed to unlock PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+};
+
+/**
+ * Check if a PDF is encrypted
+ * @param file - The PDF file to check
+ * @returns Promise<boolean> - True if encrypted, false otherwise
+ */
+export const isPDFEncrypted = async (file: File): Promise<boolean> => {
+    if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+        throw new Error('File is not a PDF');
+    }
+
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        await PDFDocument.load(arrayBuffer);
+        return false; // Successfully loaded without password
+    } catch (error) {
+        if (error instanceof Error && (
+            error.message.includes('encrypted') ||
+            error.message.includes('password')
+        )) {
+            return true; // PDF is encrypted
+        }
+        throw error; // Some other error occurred
+    }
+};
