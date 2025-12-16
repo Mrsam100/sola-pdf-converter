@@ -105,8 +105,16 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                     errorMessage = 'This PDF is password-protected. Please unlock it first using the Unlock PDF tool.';
                 } else if (err.message.includes('Invalid PDF')) {
                     errorMessage = 'The file appears to be corrupted or is not a valid PDF.';
-                } else if (err.message.includes('network') || err.message.includes('fetch')) {
-                    errorMessage = 'Network error. Please check your connection and try again.';
+                } else if (err.message.includes('network') || err.message.includes('fetch') || err.message.includes('connection')) {
+                    errorMessage = 'Network error. Please check your internet connection and try again. OCR requires downloading language files.';
+                } else if (err.message.includes('OCR engine')) {
+                    errorMessage = 'Failed to initialize OCR. Please check your internet connection - OCR needs to download language files on first use.';
+                } else if (err.message.includes('OCR failed')) {
+                    errorMessage = err.message + ' This may happen if the PDF is corrupted or has unusual formatting.';
+                } else if (err.message.includes('render')) {
+                    errorMessage = 'Failed to render PDF pages. The PDF may be corrupted or in an unsupported format.';
+                } else if (err.message.includes('canvas')) {
+                    errorMessage = 'Failed to process PDF. Your browser may not support this feature or is running low on memory.';
                 }
             }
 

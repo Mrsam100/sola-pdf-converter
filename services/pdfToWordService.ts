@@ -4,7 +4,7 @@
  */
 
 import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer } from 'docx';
-import { createWorker } from 'tesseract.js';
+import { createConfiguredWorker } from './tesseractConfig';
 
 /**
  * Extract text from PDF using pdf.js (Non-OCR mode)
@@ -45,62 +45,93 @@ export const extractTextWithOCR = async (
     file: File,
     onProgress?: (progress: number, status: string) => void
 ): Promise<{ text: string; pageCount: number }> => {
-    // Load PDF first to render pages
-    const { pdfjsLib } = await import('./pdfConfig');
+    let worker: any = null;
 
-    const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-    const pdf = await loadingTask.promise;
+    try {
+        // Load PDF first to render pages
+        const { pdfjsLib } = await import('./pdfConfig');
 
-    // Initialize Tesseract worker
-    onProgress?.(5, 'Initializing OCR engine...');
-    const worker = await createWorker('eng');
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
 
-    let fullText = '';
+        // Initialize Tesseract worker
+        onProgress?.(5, 'Initializing OCR engine...');
 
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const progressPercent = 5 + (pageNum / pdf.numPages) * 90;
-        onProgress?.(progressPercent, `Processing page ${pageNum} of ${pdf.numPages}...`);
-
-        const page = await pdf.getPage(pageNum);
-
-        // Render page to canvas
-        const scale = 2.0; // Higher scale for better OCR accuracy
-        const viewport = page.getViewport({ scale });
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-
-        if (!context) {
-            throw new Error('Failed to get canvas context');
+        try {
+            worker = await createConfiguredWorker('eng');
+        } catch (workerError) {
+            console.error('Failed to initialize OCR worker:', workerError);
+            throw new Error('Failed to initialize OCR engine. Please check your internet connection and try again.');
         }
 
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
+        let fullText = '';
 
-        await page.render({
-            canvasContext: context,
-            viewport: viewport,
-        }).promise;
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const progressPercent = 5 + (pageNum / pdf.numPages) * 90;
+            onProgress?.(progressPercent, `Processing page ${pageNum} of ${pdf.numPages}...`);
 
-        // Perform OCR on the canvas
-        const { data: { text } } = await worker.recognize(canvas);
+            const page = await pdf.getPage(pageNum);
 
-        fullText += `\n\n--- Page ${pageNum} ---\n\n${text.trim()}`;
+            // Render page to canvas
+            const scale = 2.0; // Higher scale for better OCR accuracy
+            const viewport = page.getViewport({ scale });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
 
-        // Clean up canvas to free memory
-        canvas.width = 0;
-        canvas.height = 0;
-        page.cleanup();
+            if (!context) {
+                throw new Error('Failed to get canvas context for rendering PDF page');
+            }
+
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            try {
+                await page.render({
+                    canvasContext: context,
+                    viewport: viewport,
+                }).promise;
+            } catch (renderError) {
+                console.error(`Failed to render page ${pageNum}:`, renderError);
+                throw new Error(`Failed to render PDF page ${pageNum}. The PDF may be corrupted.`);
+            }
+
+            // Perform OCR on the canvas
+            try {
+                const { data: { text } } = await worker.recognize(canvas);
+                fullText += `\n\n--- Page ${pageNum} ---\n\n${text.trim()}`;
+            } catch (ocrError) {
+                console.error(`OCR failed on page ${pageNum}:`, ocrError);
+                throw new Error(`OCR failed on page ${pageNum}. Please try with a different PDF or check your connection.`);
+            }
+
+            // Clean up canvas to free memory
+            canvas.width = 0;
+            canvas.height = 0;
+            page.cleanup();
+        }
+
+        // Terminate worker
+        if (worker) {
+            await worker.terminate();
+        }
+        onProgress?.(100, 'OCR complete!');
+
+        return {
+            text: fullText.trim(),
+            pageCount: pdf.numPages
+        };
+    } catch (error) {
+        // Ensure worker is terminated even on error
+        if (worker) {
+            try {
+                await worker.terminate();
+            } catch (terminateError) {
+                console.error('Failed to terminate OCR worker:', terminateError);
+            }
+        }
+        throw error;
     }
-
-    // Terminate worker
-    await worker.terminate();
-    onProgress?.(100, 'OCR complete!');
-
-    return {
-        text: fullText.trim(),
-        pageCount: pdf.numPages
-    };
 };
 
 /**

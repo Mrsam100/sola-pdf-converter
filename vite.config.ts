@@ -24,10 +24,20 @@ export default defineConfig(({ mode }) => {
         }
       },
       optimizeDeps: {
-        include: ['pdfjs-dist']
+        include: ['pdfjs-dist', 'tesseract.js'],
+        exclude: ['tesseract.js-core']
       },
       worker: {
         format: 'es'
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              'tesseract': ['tesseract.js']
+            }
+          }
+        }
       }
     };
 });
