@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Tool, ProcessState } from '../types';
 import { pdfToWord, pdfToWordWithOCR, downloadWord } from '../services/pdfToWordService';
+import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
 
 interface PDFToWordProps {
     tool: Tool;
@@ -23,9 +24,35 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
     const [errorMsg, setErrorMsg] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Prevent tab suspension during processing
+    const isProcessing = state === ProcessState.CONVERTING;
+    useWakeLock(isProcessing);
+    const isPageVisible = usePageVisibility();
+
+    // Notify user if they switched tabs during processing
+    useEffect(() => {
+        if (isProcessing && !isPageVisible) {
+            console.log('Processing continues in background...');
+        }
+    }, [isProcessing, isPageVisible]);
+
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const selectedFile = e.target.files[0];
+
+            // Validate file type
+            if (selectedFile.type !== 'application/pdf' && !selectedFile.name.toLowerCase().endsWith('.pdf')) {
+                setErrorMsg('Please select a valid PDF file');
+                return;
+            }
+
+            // Validate file size (max 50MB)
+            const maxSize = 50 * 1024 * 1024; // 50MB
+            if (selectedFile.size > maxSize) {
+                setErrorMsg('File is too large. Maximum size is 50MB');
+                return;
+            }
+
             setFile(selectedFile);
             setState(ProcessState.IDLE);
             setErrorMsg('');
@@ -67,8 +94,23 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
             const filename = file.name.replace('.pdf', '.docx');
             downloadWord(wordBlob, filename);
         } catch (err) {
-            console.error(err);
-            setErrorMsg(err instanceof Error ? err.message : 'An unknown error occurred');
+            console.error('PDF to Word conversion error:', err);
+
+            let errorMessage = 'An unknown error occurred';
+            if (err instanceof Error) {
+                errorMessage = err.message;
+
+                // Provide helpful error messages for common issues
+                if (err.message.includes('password') || err.message.includes('encrypted')) {
+                    errorMessage = 'This PDF is password-protected. Please unlock it first using the Unlock PDF tool.';
+                } else if (err.message.includes('Invalid PDF')) {
+                    errorMessage = 'The file appears to be corrupted or is not a valid PDF.';
+                } else if (err.message.includes('network') || err.message.includes('fetch')) {
+                    errorMessage = 'Network error. Please check your connection and try again.';
+                }
+            }
+
+            setErrorMsg(errorMessage);
             setState(ProcessState.IDLE);
             setProgress(0);
             setProgressStatus('');

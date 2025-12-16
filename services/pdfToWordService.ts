@@ -86,6 +86,11 @@ export const extractTextWithOCR = async (
         const { data: { text } } = await worker.recognize(canvas);
 
         fullText += `\n\n--- Page ${pageNum} ---\n\n${text.trim()}`;
+
+        // Clean up canvas to free memory
+        canvas.width = 0;
+        canvas.height = 0;
+        page.cleanup();
     }
 
     // Terminate worker

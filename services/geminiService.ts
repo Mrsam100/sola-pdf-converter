@@ -6,8 +6,10 @@
 import { GoogleGenAI } from "@google/genai";
 
 export const convertFile = async (file: File, toolId: string): Promise<string> => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) throw new Error("API Key missing");
+    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        throw new Error("API Key missing. Please add GEMINI_API_KEY to your .env file.");
+    }
 
     const ai = new GoogleGenAI({ apiKey });
     const base64Data = await fileToBase64(file);
@@ -66,8 +68,10 @@ export const convertFile = async (file: File, toolId: string): Promise<string> =
 }
 
 export const sendMessageToGemini = async (history: { role: 'user' | 'model'; text: string }[], message: string): Promise<string> => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) throw new Error("API Key missing");
+    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        throw new Error("API Key missing. Please add GEMINI_API_KEY to your .env file.");
+    }
 
     const ai = new GoogleGenAI({ apiKey });
 

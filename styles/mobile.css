@@ -1,0 +1,435 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* Mobile-First Optimizations */
+
+/* Touch-friendly tap targets - minimum 44x44px */
+@media (max-width: 768px) {
+  /* Improve touch targets */
+  button,
+  a,
+  input[type="file"],
+  .tool-card,
+  .filter-btn {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation; /* Disable double-tap zoom */
+  }
+
+  /* Remove tap highlight on iOS */
+  * {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  /* Smooth scrolling for mobile */
+  html {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+
+  /* Prevent text selection on buttons */
+  button, .btn-action, .btn-primary, .btn-secondary {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Optimize input fields for mobile */
+  input, textarea, select {
+    font-size: 16px !important; /* Prevents zoom on iOS */
+    padding: 12px;
+  }
+
+  /* Upload zone - larger and more touch-friendly */
+  .upload-zone {
+    min-height: 200px;
+    padding: 2rem 1rem;
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(44, 42, 38, 0.1);
+  }
+
+  .upload-zone:active {
+    transform: scale(0.98);
+    transition: transform 0.1s;
+  }
+
+  /* File preview cards */
+  .file-preview {
+    padding: 1.5rem;
+  }
+
+  /* Tool cards - stack nicely on mobile */
+  .grid-layout {
+    grid-template-columns: 1fr !important;
+    gap: 1rem;
+  }
+
+  .tool-card {
+    padding: 1.5rem;
+    cursor: pointer;
+  }
+
+  .tool-card:active {
+    transform: scale(0.98);
+    transition: transform 0.1s;
+  }
+
+  /* Navigation - mobile optimized */
+  .navbar {
+    padding: 1rem;
+  }
+
+  .mobile-menu {
+    padding: 2rem;
+  }
+
+  .mobile-menu-btn {
+    padding: 0.75rem;
+  }
+
+  /* Workspace cards */
+  .workspace-card {
+    padding: 1.5rem;
+    margin: 1rem;
+  }
+
+  /* Action buttons - full width on mobile */
+  .action-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .action-row button {
+    width: 100%;
+  }
+
+  /* Progress bars */
+  .loader {
+    height: 8px;
+  }
+
+  /* Sliders */
+  input[type="range"] {
+    height: 44px; /* Larger touch target */
+    cursor: pointer;
+  }
+
+  /* Modals and overlays */
+  .mobile-menu {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Result areas */
+  .result-area {
+    padding: 2rem 1rem;
+  }
+
+  /* Before/after comparison - stack vertically on mobile */
+  .comparison-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Filter buttons */
+  .filter-group {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    gap: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .filter-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Search box */
+  .search-box {
+    width: 100%;
+  }
+
+  /* Hero section */
+  .hero {
+    padding: 4rem 1rem 2rem;
+  }
+
+  /* Dashboard header */
+  .dashboard-header {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .controls {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  /* Error messages */
+  .error-msg {
+    padding: 1rem;
+    font-size: 0.9rem;
+  }
+
+  /* Back button */
+  .back-btn {
+    margin: 1rem;
+    padding: 0.75rem 1rem;
+  }
+
+  /* Conversion mode buttons */
+  .filter-btn {
+    min-height: 60px; /* Extra room for two lines of text */
+  }
+
+  /* Image previews */
+  .comparison-grid img {
+    max-height: 300px;
+  }
+
+  /* Workspace body */
+  .workspace-body {
+    padding: 1rem;
+  }
+
+  /* Footer */
+  .footer {
+    padding: 2rem 1rem;
+  }
+}
+
+/* Extra small devices (phones in portrait, less than 576px) */
+@media (max-width: 575px) {
+  .container {
+    padding: 0.5rem;
+  }
+
+  .workspace-title {
+    font-size: 1.5rem;
+  }
+
+  .section-title {
+    font-size: 1.75rem;
+  }
+
+  .tool-name {
+    font-size: 1rem;
+  }
+
+  .workspace-card {
+    margin: 0.5rem;
+  }
+}
+
+/* Landscape mode optimizations */
+@media (max-width: 768px) and (orientation: landscape) {
+  .upload-zone {
+    min-height: 150px;
+  }
+
+  .hero {
+    padding: 2rem 1rem;
+  }
+
+  .result-area {
+    padding: 1.5rem 1rem;
+  }
+}
+
+/* iOS specific fixes */
+@supports (-webkit-touch-callout: none) {
+  /* iOS Safari */
+  body {
+    cursor: pointer; /* Enables :active states */
+  }
+
+  input[type="file"] {
+    /* Fix file input on iOS */
+    font-size: 16px;
+  }
+
+  /* Prevent zoom on input focus */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    font-size: 16px;
+  }
+
+  /* Fix position fixed on iOS */
+  .navbar {
+    position: sticky;
+    top: 0;
+  }
+}
+
+/* Android specific fixes */
+@media (max-width: 768px) {
+  /* Improve performance on Android */
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Fix viewport height on Android */
+  .mobile-menu {
+    height: 100vh;
+    height: -webkit-fill-available;
+  }
+}
+
+/* PWA optimizations */
+@media (display-mode: standalone) {
+  /* When app is installed as PWA */
+  .navbar {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* Safe area insets for notched devices */
+@supports (padding: env(safe-area-inset-top)) {
+  .navbar {
+    padding-top: calc(1rem + env(safe-area-inset-top));
+  }
+
+  .mobile-menu {
+    padding-top: calc(2rem + env(safe-area-inset-top));
+  }
+}
+
+/* Dark mode support for mobile */
+@media (prefers-color-scheme: dark) and (max-width: 768px) {
+  /* Reduce eye strain on mobile in dark mode */
+  body {
+    background-color: #1a1a1a;
+    color: #f0f0f0;
+  }
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  button, .tool-card {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Offline indicator */
+.offline-indicator {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ff6b6b;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 2rem;
+  font-size: 0.875rem;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Loading skeleton for better perceived performance */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Pull-to-refresh hint */
+.pull-to-refresh {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateY(-100%);
+  transition: transform 0.3s;
+  z-index: 9999;
+}
+
+.pull-to-refresh.active {
+  transform: translateY(0);
+}
+
+/* Bottom sheet for mobile actions */
+.bottom-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-radius: 1rem 1rem 0 0;
+  padding: 1.5rem;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 10000;
+}
+
+.bottom-sheet.open {
+  transform: translateY(0);
+}
+
+/* Swipe gestures feedback */
+.swipeable {
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.swipeable:active {
+  cursor: grabbing;
+}
+
+/* Performance optimizations */
+@media (max-width: 768px) {
+  /* Use GPU acceleration for smooth animations */
+  .tool-card,
+  .upload-zone,
+  .mobile-menu,
+  .bottom-sheet {
+    will-change: transform;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+
+  /* Lazy load images */
+  img {
+    loading: lazy;
+  }
+
+  /* Optimize repaints */
+  .animate-fade-in {
+    will-change: opacity;
+  }
+}

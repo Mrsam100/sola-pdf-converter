@@ -16,6 +16,9 @@ import PDFToWord from './PDFToWord';
 import WordToPDF from './WordToPDF';
 import EncryptPDF from './EncryptPDF';
 import UnlockPDF from './UnlockPDF';
+import EditPDF from './EditPDF';
+import RemoveBackground from './RemoveBackground';
+import ImageConverter from './ImageConverter';
 
 interface ToolDetailProps {
   tool: Tool;
@@ -54,6 +57,17 @@ const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
   if (tool.id === 'unlock-pdf') {
     return <UnlockPDF tool={tool} onBack={onBack} />;
   }
+  if (tool.id === 'edit-pdf') {
+    return <EditPDF tool={tool} onBack={onBack} />;
+  }
+
+  // Route to image processing components
+  if (tool.id === 'remove-bg') {
+    return <RemoveBackground tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'jpg-png' || tool.id === 'png-jpg' || tool.id === 'heic-jpg') {
+    return <ImageConverter tool={tool} onBack={onBack} />;
+  }
 
   // Default converter for other tools
 
@@ -65,7 +79,7 @@ const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const getAcceptTypes = (toolId: string, category: string) => {
-      if (toolId === 'audio-text') return 'audio/*';
+      if (toolId === 'audio-text') return 'audio/*,.mp3,.wav,.ogg,.m4a,.aac,.wma,.flac,.aiff,.alac,.amr,.opus,.webm';
       if (category === 'Image') return 'image/*';
       if (category === 'PDF') return '.pdf';
       return '*/*';
@@ -74,6 +88,28 @@ const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
+
+          // Validate file size (max 20MB for API uploads)
+          const maxSize = 20 * 1024 * 1024; // 20MB
+          if (file.size > maxSize) {
+              setErrorMsg('File is too large. Maximum size is 20MB');
+              return;
+          }
+
+          // Validate file type for audio
+          if (tool.id === 'audio-text') {
+              const validAudioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.wma', '.flac', '.aiff', '.alac', '.amr', '.opus', '.webm'];
+              const fileName = file.name.toLowerCase();
+              const hasValidExtension = validAudioExtensions.some(ext => fileName.endsWith(ext));
+              const isAudioType = file.type && file.type.startsWith('audio/');
+
+              // Accept if either MIME type is audio OR file has valid audio extension
+              if (!hasValidExtension && !isAudioType) {
+                  setErrorMsg(`Invalid audio file. Supported formats: MP3, WAV, OGG, M4A, AAC, WMA, FLAC, AIFF, ALAC, AMR, OPUS, WEBM`);
+                  return;
+              }
+          }
+
           setFileObj(file);
           setFileName(file.name);
           setState(ProcessState.IDLE);
@@ -84,17 +120,34 @@ const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
 
   const handleConvert = async () => {
       if (!fileObj) return;
-      
+
       setState(ProcessState.CONVERTING);
       setErrorMsg('');
-      
+
       try {
           const result = await convertFile(fileObj, tool.id);
           setResultText(result);
           setState(ProcessState.COMPLETED);
       } catch (err) {
-          console.error(err);
-          setErrorMsg(err instanceof Error ? err.message : "An unknown error occurred");
+          console.error('Conversion error:', err);
+
+          let errorMessage = "An unknown error occurred";
+          if (err instanceof Error) {
+              errorMessage = err.message;
+
+              // Provide helpful error messages
+              if (errorMessage.includes('API Key missing')) {
+                  errorMessage = 'API Key not configured. Please add GEMINI_API_KEY to your .env file.';
+              } else if (errorMessage.includes('quota') || errorMessage.includes('limit')) {
+                  errorMessage = 'API quota exceeded. Please try again later or check your API limits.';
+              } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+                  errorMessage = 'Network error. Please check your internet connection and try again.';
+              } else if (errorMessage.includes('unsupported')) {
+                  errorMessage = 'This file format is not supported. Please try a different file.';
+              }
+          }
+
+          setErrorMsg(errorMessage);
           setState(ProcessState.IDLE);
       }
   };

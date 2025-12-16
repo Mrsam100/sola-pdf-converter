@@ -2,15 +2,70 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Mobile Viewport - Optimized -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+
+    <!-- Mobile Web App Capable -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sola" />
+
+    <!-- Theme Color for Mobile -->
+    <meta name="theme-color" content="#2C2A26" />
+    <meta name="msapplication-TileColor" content="#2C2A26" />
+
     <title>Sola - Precision Conversion</title>
-    <meta name="description" content="Sola - Premium file conversion suite" />
+    <meta name="description" content="Sola - Premium file conversion suite. Convert PDFs, images, audio files with AI-powered tools. Client-side processing for maximum privacy." />
+
+    <!-- Security Headers -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-Frame-Options" content="DENY" />
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <!-- Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://generativelanguage.googleapis.com; worker-src 'self' blob:; media-src 'self' blob:;" />
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+    <!-- Mobile Optimized CSS -->
+    <link rel="stylesheet" href="/styles/mobile.css">
+
+    <!-- Preload critical resources for mobile -->
+    <link rel="preload" as="style" href="/styles/mobile.css">
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- Offline indicator for mobile -->
+    <div id="offline-indicator" class="offline-indicator" style="display: none;">
+      📵 You're offline. Some features may not work.
+    </div>
+
     <script type="module" src="/index.tsx"></script>
+
+    <!-- Service Worker for PWA (optional) -->
+    <script>
+      if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {
+            // Service worker not available, that's ok
+          });
+        });
+      }
+
+      // Show offline indicator
+      window.addEventListener('online', () => {
+        document.getElementById('offline-indicator').style.display = 'none';
+      });
+      window.addEventListener('offline', () => {
+        document.getElementById('offline-indicator').style.display = 'block';
+      });
+    </script>
   </body>
 </html>
