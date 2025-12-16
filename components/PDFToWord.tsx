@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Tool, ProcessState } from '../types';
 import { pdfToWord, pdfToWordWithOCR, downloadWord } from '../services/pdfToWordService';
 import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
+import BackButton from './BackButton';
 
 interface PDFToWordProps {
     tool: Tool;
@@ -138,12 +139,7 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
         <div className="detail-view animate-fade-in">
             <div className="container">
                 {/* Navigation */}
-                <button onClick={onBack} className="back-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-sm">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-                    </svg>
-                    Back to Dashboard
-                </button>
+                <BackButton onBack={onBack} />
 
                 {/* Main Interface Card */}
                 <div className="workspace-card">
