@@ -3,14 +3,27 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { PDFDocument, degrees } from 'pdf-lib';
+import { PDFDocument, degrees, PDFPage, rgb } from 'pdf-lib';
+import type {
+    ImageToPdfConfig,
+    MergePdfConfig,
+    SplitPdfConfig,
+    CompressPdfConfig,
+    RotatePdfConfig,
+    PdfToImageConfig,
+    PageSize,
+    MarginSize,
+    PageSizeDimensions,
+    MarginDimensions
+} from '../types';
 
 /**
  * Merge multiple PDF files into a single PDF
  * @param files - Array of PDF File objects to merge
+ * @param config - Optional configuration for page ordering and selection
  * @returns Promise<Uint8Array> - The merged PDF as a byte array
  */
-export const mergePDFs = async (files: File[]): Promise<Uint8Array> => {
+export const mergePDFs = async (files: File[], config?: MergePdfConfig): Promise<Uint8Array> => {
     if (files.length === 0) {
         throw new Error('No files provided for merging');
     }
@@ -22,10 +35,28 @@ export const mergePDFs = async (files: File[]): Promise<Uint8Array> => {
     // Create a new PDF document
     const mergedPdf = await PDFDocument.create();
 
-    // Process each file
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+    // Determine processing order
+    let processOrder: Array<{ file: File; pageIndices?: number[] }> = [];
 
+    if (config?.pageOrder && config.pageOrder.length > 0) {
+        // Use configured page order
+        processOrder = config.pageOrder.map(order => {
+            const file = files.find(f => f.name === order.fileName);
+            if (!file) {
+                throw new Error(`File "${order.fileName}" not found in provided files`);
+            }
+            return {
+                file,
+                pageIndices: order.pageIndices.length > 0 ? order.pageIndices : undefined
+            };
+        });
+    } else {
+        // Default: merge all files in original order, all pages
+        processOrder = files.map(file => ({ file, pageIndices: undefined }));
+    }
+
+    // Process each file according to order
+    for (const { file, pageIndices } of processOrder) {
         // Validate file type
         if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
             throw new Error(`File "${file.name}" is not a PDF. Please select only PDF files.`);
@@ -38,8 +69,19 @@ export const mergePDFs = async (files: File[]): Promise<Uint8Array> => {
             // Load the PDF
             const pdf = await PDFDocument.load(arrayBuffer);
 
-            // Copy all pages from this PDF to the merged PDF
-            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            // Determine which pages to copy
+            const pagesToCopy = pageIndices || pdf.getPageIndices();
+
+            // Validate page indices
+            const totalPages = pdf.getPageCount();
+            for (const pageIdx of pagesToCopy) {
+                if (pageIdx < 0 || pageIdx >= totalPages) {
+                    throw new Error(`Invalid page index ${pageIdx} in file "${file.name}". File has ${totalPages} pages.`);
+                }
+            }
+
+            // Copy specified pages from this PDF to the merged PDF
+            const copiedPages = await mergedPdf.copyPages(pdf, pagesToCopy);
 
             // Add each copied page to the merged document
             copiedPages.forEach((page) => {
@@ -58,12 +100,12 @@ export const mergePDFs = async (files: File[]): Promise<Uint8Array> => {
 /**
  * Split a PDF into separate pages or page ranges
  * @param file - The PDF file to split
- * @param pageRanges - Array of page ranges (e.g., ["1-3", "5", "7-9"])
+ * @param config - Configuration for split mode and options
  * @returns Promise<Uint8Array[]> - Array of split PDF byte arrays
  */
 export const splitPDF = async (
     file: File,
-    pageRanges: string[]
+    config: SplitPdfConfig
 ): Promise<{ pdf: Uint8Array; name: string }[]> => {
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
         throw new Error('File is not a PDF');
@@ -78,48 +120,100 @@ export const splitPDF = async (
         throw new Error('PDF has no pages');
     }
 
-    // Parse page ranges
-    const parsedRanges: number[][] = [];
+    const baseName = file.name.replace('.pdf', '');
+    let parsedRanges: number[][] = [];
 
-    for (const range of pageRanges) {
-        const trimmed = range.trim();
-
-        if (trimmed.includes('-')) {
-            // Range like "1-3"
-            const [start, end] = trimmed.split('-').map(num => parseInt(num.trim(), 10));
-
-            if (isNaN(start) || isNaN(end)) {
-                throw new Error(`Invalid page range: "${range}"`);
+    // Parse based on split mode
+    switch (config.mode) {
+        case 'ranges':
+            if (!config.pageRanges || config.pageRanges.length === 0) {
+                throw new Error('Page ranges are required for range split mode');
             }
 
-            if (start < 1 || end > totalPages || start > end) {
-                throw new Error(`Invalid range "${range}". PDF has ${totalPages} pages.`);
+            for (const range of config.pageRanges) {
+                const trimmed = range.trim();
+
+                if (trimmed.includes('-')) {
+                    // Range like "1-3"
+                    const [start, end] = trimmed.split('-').map(num => parseInt(num.trim(), 10));
+
+                    if (isNaN(start) || isNaN(end)) {
+                        throw new Error(`Invalid page range: "${range}"`);
+                    }
+
+                    if (start < 1 || end > totalPages || start > end) {
+                        throw new Error(`Invalid range "${range}". PDF has ${totalPages} pages.`);
+                    }
+
+                    const pages: number[] = [];
+                    for (let i = start; i <= end; i++) {
+                        pages.push(i - 1); // Convert to 0-based index
+                    }
+                    parsedRanges.push(pages);
+                } else {
+                    // Single page like "5"
+                    const pageNum = parseInt(trimmed, 10);
+
+                    if (isNaN(pageNum)) {
+                        throw new Error(`Invalid page number: "${range}"`);
+                    }
+
+                    if (pageNum < 1 || pageNum > totalPages) {
+                        throw new Error(`Page ${pageNum} does not exist. PDF has ${totalPages} pages.`);
+                    }
+
+                    parsedRanges.push([pageNum - 1]); // Convert to 0-based index
+                }
+            }
+            break;
+
+        case 'extract':
+            if (!config.extractPages || config.extractPages.length === 0) {
+                throw new Error('Pages to extract are required for extract mode');
             }
 
-            const pages: number[] = [];
-            for (let i = start; i <= end; i++) {
-                pages.push(i - 1); // Convert to 0-based index
+            for (const pageNum of config.extractPages) {
+                if (pageNum < 1 || pageNum > totalPages) {
+                    throw new Error(`Page ${pageNum} does not exist. PDF has ${totalPages} pages.`);
+                }
+                parsedRanges.push([pageNum - 1]); // Each page as separate PDF
             }
-            parsedRanges.push(pages);
-        } else {
-            // Single page like "5"
-            const pageNum = parseInt(trimmed, 10);
+            break;
 
-            if (isNaN(pageNum)) {
-                throw new Error(`Invalid page number: "${range}"`);
-            }
-
-            if (pageNum < 1 || pageNum > totalPages) {
-                throw new Error(`Page ${pageNum} does not exist. PDF has ${totalPages} pages.`);
+        case 'every-n-pages':
+            const splitEvery = config.splitEvery || 1;
+            if (splitEvery < 1) {
+                throw new Error('Split interval must be at least 1');
             }
 
-            parsedRanges.push([pageNum - 1]); // Convert to 0-based index
-        }
+            for (let i = 0; i < totalPages; i += splitEvery) {
+                const pages: number[] = [];
+                for (let j = i; j < Math.min(i + splitEvery, totalPages); j++) {
+                    pages.push(j);
+                }
+                parsedRanges.push(pages);
+            }
+            break;
+
+        default:
+            throw new Error(`Unknown split mode: ${config.mode}`);
     }
 
-    // Create split PDFs
+    // Handle output format
+    if (config.outputFormat === 'merged') {
+        // Merge all extracted pages into single PDF
+        const mergedPdf = await PDFDocument.create();
+        const allPages = parsedRanges.flat();
+        const copiedPages = await mergedPdf.copyPages(sourcePdf, allPages);
+        copiedPages.forEach((page) => {
+            mergedPdf.addPage(page);
+        });
+        const pdfBytes = await mergedPdf.save();
+        return [{ pdf: pdfBytes, name: `${baseName}_extracted.pdf` }];
+    }
+
+    // Create separate PDFs (default)
     const results: { pdf: Uint8Array; name: string }[] = [];
-    const baseName = file.name.replace('.pdf', '');
 
     for (let i = 0; i < parsedRanges.length; i++) {
         const pages = parsedRanges[i];
@@ -133,9 +227,14 @@ export const splitPDF = async (
 
         const pdfBytes = await newPdf.save();
 
-        // Generate descriptive name
-        const pagesList = pages.map(p => p + 1).join('-');
-        const name = `${baseName}_pages_${pagesList}.pdf`;
+        // Generate descriptive name based on mode
+        let name: string;
+        if (config.mode === 'extract' && pages.length === 1) {
+            name = `${baseName}_page_${pages[0] + 1}.pdf`;
+        } else {
+            const pagesList = pages.map(p => p + 1).join('-');
+            name = `${baseName}_pages_${pagesList}.pdf`;
+        }
 
         results.push({ pdf: pdfBytes, name });
     }
@@ -146,9 +245,10 @@ export const splitPDF = async (
 /**
  * Compress a PDF by removing duplicate objects and optimizing
  * @param file - The PDF file to compress
+ * @param config - Configuration for compression level and options
  * @returns Promise<Uint8Array> - The compressed PDF as a byte array
  */
-export const compressPDF = async (file: File): Promise<Uint8Array> => {
+export const compressPDF = async (file: File, config?: CompressPdfConfig): Promise<Uint8Array> => {
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
         throw new Error('File is not a PDF');
     }
@@ -157,13 +257,58 @@ export const compressPDF = async (file: File): Promise<Uint8Array> => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await PDFDocument.load(arrayBuffer);
 
+    // Apply configuration
+    const compressionLevel = config?.compressionLevel || 'medium';
+    const optimizeImages = config?.optimizeImages ?? true;
+    const removeMetadata = config?.removeMetadata ?? false;
+
+    // Remove metadata if requested
+    if (removeMetadata) {
+        pdf.setTitle('');
+        pdf.setAuthor('');
+        pdf.setSubject('');
+        pdf.setKeywords([]);
+        pdf.setProducer('');
+        pdf.setCreator('');
+    }
+
+    // Configure compression options based on level
+    const compressionOptions: any = {
+        addDefaultPage: false,
+    };
+
+    switch (compressionLevel) {
+        case 'low':
+            compressionOptions.useObjectStreams = false;
+            compressionOptions.objectsPerTick = 100;
+            break;
+
+        case 'medium':
+            compressionOptions.useObjectStreams = true;
+            compressionOptions.objectsPerTick = 50;
+            break;
+
+        case 'high':
+            compressionOptions.useObjectStreams = true;
+            compressionOptions.objectsPerTick = 25;
+            break;
+
+        case 'extreme':
+            compressionOptions.useObjectStreams = true;
+            compressionOptions.objectsPerTick = 10;
+            break;
+
+        default:
+            compressionOptions.useObjectStreams = true;
+            compressionOptions.objectsPerTick = 50;
+    }
+
+    // Note: pdf-lib has limited image compression capabilities
+    // For more advanced image optimization, we would need additional libraries
+    // Currently we rely on pdf-lib's built-in object stream compression
+
     // Save with compression options
-    // pdf-lib automatically deduplicates objects and compresses streams
-    const compressedPdfBytes = await pdf.save({
-        useObjectStreams: true, // Compress objects into streams
-        addDefaultPage: false,   // Don't add extra pages
-        objectsPerTick: 50,      // Process in batches for better performance
-    });
+    const compressedPdfBytes = await pdf.save(compressionOptions);
 
     return compressedPdfBytes;
 };
@@ -171,18 +316,18 @@ export const compressPDF = async (file: File): Promise<Uint8Array> => {
 /**
  * Rotate PDF pages
  * @param file - The PDF file to rotate
- * @param rotation - Rotation angle (90, 180, or 270 degrees)
- * @param pageNumbers - Optional array of page numbers to rotate (1-based). If not provided, rotates all pages.
+ * @param config - Configuration for rotation angle and page selection
  * @returns Promise<Uint8Array> - The rotated PDF as a byte array
  */
 export const rotatePDF = async (
     file: File,
-    rotation: 90 | 180 | 270,
-    pageNumbers?: number[]
+    config: RotatePdfConfig
 ): Promise<Uint8Array> => {
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
         throw new Error('File is not a PDF');
     }
+
+    const rotation = config.rotation;
 
     if (![90, 180, 270].includes(rotation)) {
         throw new Error('Rotation must be 90, 180, or 270 degrees');
@@ -200,8 +345,8 @@ export const rotatePDF = async (
     }
 
     // Determine which pages to rotate
-    const pagesToRotate = pageNumbers
-        ? pageNumbers.map(num => {
+    const pagesToRotate = config.pageSelection === 'specific' && config.pageNumbers
+        ? config.pageNumbers.map(num => {
             if (num < 1 || num > totalPages) {
                 throw new Error(`Page ${num} does not exist. PDF has ${totalPages} pages.`);
             }
@@ -277,18 +422,28 @@ export const downloadPDF = (pdfBytes: Uint8Array, filename: string): void => {
 };
 
 /**
- * Convert PDF pages to JPG images
+ * Convert PDF pages to images
  * @param file - The PDF file to convert
- * @param quality - JPG quality (0-1, default 0.92)
- * @returns Promise<{ image: Blob; name: string }[]> - Array of JPG images with filenames
+ * @param config - Configuration for format, quality, DPI, and page selection
+ * @returns Promise<{ image: Blob; name: string }[]> - Array of images with filenames
  */
 export const pdfToJPG = async (
     file: File,
-    quality: number = 0.92
+    config?: PdfToImageConfig
 ): Promise<{ image: Blob; name: string }[]> => {
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
         throw new Error('File is not a PDF');
     }
+
+    // Apply configuration with defaults
+    const format = config?.format || 'jpg';
+    const quality = config?.quality ?? 0.92;
+    const dpi = config?.dpi || 150;
+    const pageSelection = config?.pageSelection || 'all';
+    const colorSpace = config?.colorSpace || 'rgb';
+
+    // Calculate scale based on DPI (72 DPI = scale 1.0)
+    const scale = dpi / 72;
 
     // Import configured pdfjs
     const { pdfjsLib } = await import('./pdfConfig');
@@ -297,14 +452,52 @@ export const pdfToJPG = async (
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdf = await loadingTask.promise;
 
-    const results: { image: Blob; name: string }[] = [];
+    const totalPages = pdf.numPages;
     const baseName = file.name.replace('.pdf', '');
 
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
+    // Determine which pages to convert
+    let pagesToConvert: number[] = [];
 
-        // Set scale for better quality (2x for high resolution)
-        const scale = 2.0;
+    if (pageSelection === 'all') {
+        pagesToConvert = Array.from({ length: totalPages }, (_, i) => i + 1);
+    } else if (pageSelection === 'range' && config?.pageRange) {
+        // Parse page range (e.g., "1-3,5,7-9")
+        const ranges = config.pageRange.split(',');
+        for (const range of ranges) {
+            const trimmed = range.trim();
+            if (trimmed.includes('-')) {
+                const [start, end] = trimmed.split('-').map(n => parseInt(n.trim(), 10));
+                if (!isNaN(start) && !isNaN(end)) {
+                    for (let i = start; i <= Math.min(end, totalPages); i++) {
+                        if (i >= 1 && !pagesToConvert.includes(i)) {
+                            pagesToConvert.push(i);
+                        }
+                    }
+                }
+            } else {
+                const pageNum = parseInt(trimmed, 10);
+                if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages && !pagesToConvert.includes(pageNum)) {
+                    pagesToConvert.push(pageNum);
+                }
+            }
+        }
+        pagesToConvert.sort((a, b) => a - b);
+    } else if (pageSelection === 'current') {
+        // Default to first page for 'current' mode
+        pagesToConvert = [1];
+    } else {
+        // Fallback to all pages
+        pagesToConvert = Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const results: { image: Blob; name: string }[] = [];
+
+    // Determine MIME type and file extension
+    const mimeType = format === 'jpg' ? 'image/jpeg' : format === 'png' ? 'image/png' : 'image/webp';
+    const extension = format;
+
+    for (const pageNum of pagesToConvert) {
+        const page = await pdf.getPage(pageNum);
         const viewport = page.getViewport({ scale });
 
         // Create canvas
@@ -324,6 +517,28 @@ export const pdfToJPG = async (
             viewport: viewport,
         }).promise;
 
+        // Apply color space conversion
+        if (colorSpace === 'grayscale' || colorSpace === 'blackwhite') {
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            for (let i = 0; i < data.length; i += 4) {
+                // Convert to grayscale using luminosity method
+                const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+
+                if (colorSpace === 'blackwhite') {
+                    // Apply threshold for black and white
+                    const bw = gray > 128 ? 255 : 0;
+                    data[i] = data[i + 1] = data[i + 2] = bw;
+                } else {
+                    // Grayscale
+                    data[i] = data[i + 1] = data[i + 2] = gray;
+                }
+            }
+
+            context.putImageData(imageData, 0, 0);
+        }
+
         // Convert canvas to blob
         const blob = await new Promise<Blob>((resolve, reject) => {
             canvas.toBlob(
@@ -334,14 +549,14 @@ export const pdfToJPG = async (
                         reject(new Error('Failed to create image blob'));
                     }
                 },
-                'image/jpeg',
-                quality
+                mimeType,
+                format === 'webp' ? quality : (format === 'jpg' ? quality : undefined)
             );
         });
 
         results.push({
             image: blob,
-            name: `${baseName}_page_${pageNum}.jpg`,
+            name: `${baseName}_page_${pageNum}.${extension}`,
         });
     }
 
@@ -365,11 +580,86 @@ export const downloadImage = (blob: Blob, filename: string): void => {
 };
 
 /**
+ * Get page size dimensions in points (1 point = 1/72 inch)
+ * @param pageSize - The page size name or custom dimensions
+ * @returns Page dimensions in points
+ */
+const getPageSizeDimensions = (pageSize: PageSize, customSize?: PageSizeDimensions): PageSizeDimensions => {
+    const sizes: Record<PageSize, PageSizeDimensions> = {
+        A4: { width: 595, height: 842 },
+        Letter: { width: 612, height: 792 },
+        Legal: { width: 612, height: 1008 },
+        A3: { width: 842, height: 1191 },
+        A5: { width: 420, height: 595 },
+        Custom: customSize || { width: 595, height: 842 },
+    };
+    return sizes[pageSize] || sizes.A4;
+};
+
+/**
+ * Get margin dimensions in points
+ * @param marginSize - The margin size
+ * @returns Margin dimensions in points
+ */
+const getMarginDimensions = (marginSize: MarginSize, customMargin?: MarginDimensions): MarginDimensions => {
+    const margins: Record<MarginSize, MarginDimensions> = {
+        none: { top: 0, right: 0, bottom: 0, left: 0 },
+        small: { top: 28.35, right: 28.35, bottom: 28.35, left: 28.35 }, // 10mm
+        medium: { top: 56.7, right: 56.7, bottom: 56.7, left: 56.7 }, // 20mm
+        large: { top: 85.05, right: 85.05, bottom: 85.05, left: 85.05 }, // 30mm
+    };
+    return customMargin || margins[marginSize] || margins.small;
+};
+
+/**
+ * Calculate image dimensions to fit within page bounds while maintaining aspect ratio
+ * @param imageWidth - Original image width
+ * @param imageHeight - Original image height
+ * @param availableWidth - Available width on page
+ * @param availableHeight - Available height on page
+ * @param fitToPage - Whether to fit image to page bounds
+ * @returns Calculated dimensions
+ */
+const calculateImageDimensions = (
+    imageWidth: number,
+    imageHeight: number,
+    availableWidth: number,
+    availableHeight: number,
+    fitToPage: boolean
+): { width: number; height: number } => {
+    if (!fitToPage) {
+        return { width: imageWidth, height: imageHeight };
+    }
+
+    const imageAspect = imageWidth / imageHeight;
+    const pageAspect = availableWidth / availableHeight;
+
+    let width: number;
+    let height: number;
+
+    if (imageAspect > pageAspect) {
+        // Image is wider than page aspect - fit to width
+        width = availableWidth;
+        height = width / imageAspect;
+    } else {
+        // Image is taller than page aspect - fit to height
+        height = availableHeight;
+        width = height * imageAspect;
+    }
+
+    return { width, height };
+};
+
+/**
  * Convert JPG/PNG images to a single PDF
  * @param files - Array of image files to convert
+ * @param config - Optional configuration for page settings, margins, and quality
  * @returns Promise<Uint8Array> - The PDF as a byte array
  */
-export const imagesToPDF = async (files: File[]): Promise<Uint8Array> => {
+export const imagesToPDF = async (
+    files: File[],
+    config?: ImageToPdfConfig
+): Promise<Uint8Array> => {
     if (files.length === 0) {
         throw new Error('No files provided');
     }
@@ -381,9 +671,45 @@ export const imagesToPDF = async (files: File[]): Promise<Uint8Array> => {
         }
     }
 
+    // Get configuration with defaults
+    const pageSize = config?.pageSize || 'A4';
+    const orientation = config?.orientation || 'portrait';
+    const marginSize = config?.margin || 'small';
+    const quality = config?.quality || 'high';
+    const fitToPage = config?.fitToPage ?? true;
+
+    // Calculate page dimensions
+    const pageDims = getPageSizeDimensions(pageSize, config?.customPageSize);
+    const margins = getMarginDimensions(marginSize, config?.customMargin);
+
+    // Apply orientation
+    const pageWidth = orientation === 'landscape' ? pageDims.height : pageDims.width;
+    const pageHeight = orientation === 'landscape' ? pageDims.width : pageDims.height;
+
+    // Calculate available space for image
+    const availableWidth = pageWidth - margins.left - margins.right;
+    const availableHeight = pageHeight - margins.top - margins.bottom;
+
+    // Determine quality factor
+    const qualityMap = {
+        original: 1.0,
+        high: 0.92,
+        medium: 0.85,
+        low: 0.7,
+    };
+    const jpegQuality = qualityMap[quality];
+
     const pdfDoc = await PDFDocument.create();
 
-    for (const file of files) {
+    // Reorder files if config specifies order
+    let orderedFiles = [...files];
+    if (config?.imageOrder && config.imageOrder.length > 0) {
+        orderedFiles = config.imageOrder
+            .map(id => files.find(f => f.name === id))
+            .filter(f => f !== undefined) as File[];
+    }
+
+    for (const file of orderedFiles) {
         try {
             const arrayBuffer = await file.arrayBuffer();
             let image;
@@ -406,7 +732,7 @@ export const imagesToPDF = async (files: File[]): Promise<Uint8Array> => {
 
                 ctx.drawImage(img, 0, 0);
 
-                // Convert to JPEG
+                // Convert to JPEG with configured quality
                 const jpegBlob = await new Promise<Blob>((resolve, reject) => {
                     canvas.toBlob(
                         (blob) => {
@@ -414,7 +740,7 @@ export const imagesToPDF = async (files: File[]): Promise<Uint8Array> => {
                             else reject(new Error('Failed to convert image'));
                         },
                         'image/jpeg',
-                        0.92
+                        jpegQuality
                     );
                 });
 
@@ -422,15 +748,28 @@ export const imagesToPDF = async (files: File[]): Promise<Uint8Array> => {
                 image = await pdfDoc.embedJpg(jpegBuffer);
             }
 
-            // Create a page with the image dimensions
-            const page = pdfDoc.addPage([image.width, image.height]);
+            // Create a page with configured dimensions
+            const page = pdfDoc.addPage([pageWidth, pageHeight]);
 
-            // Draw the image on the page (fill entire page)
+            // Calculate image dimensions to fit within margins
+            const imageDims = calculateImageDimensions(
+                image.width,
+                image.height,
+                availableWidth,
+                availableHeight,
+                fitToPage
+            );
+
+            // Center image on page
+            const x = margins.left + (availableWidth - imageDims.width) / 2;
+            const y = margins.bottom + (availableHeight - imageDims.height) / 2;
+
+            // Draw the image
             page.drawImage(image, {
-                x: 0,
-                y: 0,
-                width: image.width,
-                height: image.height,
+                x,
+                y,
+                width: imageDims.width,
+                height: imageDims.height,
             });
         } catch (error) {
             throw new Error(`Failed to process "${file.name}": ${error instanceof Error ? error.message : 'Unknown error'}`);

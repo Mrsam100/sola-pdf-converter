@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Tool, ProcessState } from '../types';
+import { Tool, ProcessState, RotatePdfConfig, ConversionStep } from '../types';
 import { rotatePDF, downloadPDF } from '../services/pdfService';
+import { RotatePdfConfig as RotatePdfConfigComponent } from './config/RotatePdfConfig';
 
 interface RotatePDFProps {
     tool: Tool;
@@ -20,8 +21,10 @@ interface PagePreview {
 
 const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
+    const [conversionStep, setConversionStep] = useState<ConversionStep>('upload');
     const [file, setFile] = useState<File | null>(null);
     const [pages, setPages] = useState<PagePreview[]>([]);
+    const [config, setConfig] = useState<RotatePdfConfig | undefined>(undefined);
     const [errorMsg, setErrorMsg] = useState<string>('');
     const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,13 +123,21 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
         );
     };
 
-    const handleSave = async () => {
+    const handleProceedToConfig = () => {
         if (!file || pages.length === 0) {
             setErrorMsg('Please select a PDF file');
             return;
         }
+        setConversionStep('configure');
+    };
 
+    const handleConfigChange = (newConfig: RotatePdfConfig) => {
+        setConfig(newConfig);
+    };
+
+    const handleRotate = async (finalConfig: RotatePdfConfig) => {
         setState(ProcessState.CONVERTING);
+        setConversionStep('processing');
         setErrorMsg('');
 
         try {
@@ -145,33 +156,42 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
             if (rotationGroups.size === 0) {
                 setErrorMsg('No rotations applied. Please rotate at least one page.');
                 setState(ProcessState.IDLE);
+                setConversionStep('upload');
                 return;
             }
 
             // Apply rotations sequentially
-            let pdfBytes = await file.arrayBuffer();
+            let pdfBytes = await file!.arrayBuffer();
 
             for (const [rotation, pageNumbers] of rotationGroups.entries()) {
-                const pdfFile = new File([pdfBytes], file.name, { type: 'application/pdf' });
-                pdfBytes = await rotatePDF(pdfFile, rotation as 90 | 180 | 270, pageNumbers);
+                const pdfFile = new File([pdfBytes], file!.name, { type: 'application/pdf' });
+                pdfBytes = await rotatePDF(pdfFile, finalConfig);
             }
 
             setState(ProcessState.COMPLETED);
+            setConversionStep('result');
 
             // Auto-download
-            const fileName = file.name.replace('.pdf', '_rotated.pdf');
+            const fileName = file!.name.replace('.pdf', '_rotated.pdf');
             downloadPDF(new Uint8Array(pdfBytes), fileName);
         } catch (err) {
             console.error(err);
             setErrorMsg(err instanceof Error ? err.message : 'An unknown error occurred');
             setState(ProcessState.IDLE);
+            setConversionStep('upload');
         }
+    };
+
+    const handleCancelConfig = () => {
+        setConversionStep('upload');
     };
 
     const handleReset = () => {
         setState(ProcessState.IDLE);
+        setConversionStep('upload');
         setFile(null);
         setPages([]);
+        setConfig(undefined);
         setErrorMsg('');
     };
 
@@ -205,7 +225,14 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
                             <div className="error-msg">{errorMsg}</div>
                         )}
 
-                        {state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
+                        {conversionStep === 'configure' ? (
+                            <RotatePdfConfigComponent
+                                file={file!}
+                                onConfigChange={handleConfigChange}
+                                onRotate={handleRotate}
+                                onCancel={handleCancelConfig}
+                            />
+                        ) : state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
                             <>
                                 {file && pages.length > 0 ? (
                                     <div>
@@ -363,8 +390,8 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
 
                                         {/* Action Buttons */}
                                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <button onClick={handleSave} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
-                                                Save Rotated PDF
+                                            <button onClick={handleProceedToConfig} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
+                                                Configure & Rotate →
                                             </button>
                                             <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>
                                                 Select Different PDF

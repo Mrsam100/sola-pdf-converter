@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Tool, ProcessState } from '../types';
+import { Tool, ProcessState, PdfToImageConfig, ConversionStep } from '../types';
 import { pdfToJPG, downloadImage } from '../services/pdfService';
+import { PdfToJpgConfig } from './config/PdfToJpgConfig';
 
 interface PDFToJPGProps {
     tool: Tool;
@@ -14,7 +15,9 @@ interface PDFToJPGProps {
 
 const PDFToJPG: React.FC<PDFToJPGProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
+    const [conversionStep, setConversionStep] = useState<ConversionStep>('upload');
     const [file, setFile] = useState<File | null>(null);
+    const [config, setConfig] = useState<PdfToImageConfig | undefined>(undefined);
     const [quality, setQuality] = useState<number>(0.92);
     const [resultCount, setResultCount] = useState<number>(0);
     const [errorMsg, setErrorMsg] = useState<string>('');
@@ -29,17 +32,30 @@ const PDFToJPG: React.FC<PDFToJPGProps> = ({ tool, onBack }) => {
         }
     };
 
-    const handleConvert = async () => {
+    const handleProceedToConfig = () => {
+        if (!file) {
+            setErrorMsg('Please select a PDF file');
+            return;
+        }
+        setConversionStep('configure');
+    };
+
+    const handleConfigChange = (newConfig: PdfToImageConfig) => {
+        setConfig(newConfig);
+    };
+
+    const handleConvert = async (finalConfig: PdfToImageConfig) => {
         if (!file) {
             setErrorMsg('Please select a PDF file');
             return;
         }
 
         setState(ProcessState.CONVERTING);
+        setConversionStep('processing');
         setErrorMsg('');
 
         try {
-            const results = await pdfToJPG(file, quality);
+            const results = await pdfToJPG(file, finalConfig);
             setResultCount(results.length);
 
             // Download all images
@@ -48,16 +64,24 @@ const PDFToJPG: React.FC<PDFToJPGProps> = ({ tool, onBack }) => {
             });
 
             setState(ProcessState.COMPLETED);
+            setConversionStep('result');
         } catch (err) {
             console.error(err);
             setErrorMsg(err instanceof Error ? err.message : 'An unknown error occurred');
             setState(ProcessState.IDLE);
+            setConversionStep('upload');
         }
+    };
+
+    const handleCancelConfig = () => {
+        setConversionStep('upload');
     };
 
     const handleReset = () => {
         setState(ProcessState.IDLE);
+        setConversionStep('upload');
         setFile(null);
+        setConfig(undefined);
         setQuality(0.92);
         setResultCount(0);
         setErrorMsg('');
@@ -99,7 +123,14 @@ const PDFToJPG: React.FC<PDFToJPGProps> = ({ tool, onBack }) => {
                             <div className="error-msg">{errorMsg}</div>
                         )}
 
-                        {state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
+                        {conversionStep === 'configure' && file ? (
+                            <PdfToJpgConfig
+                                file={file}
+                                onConfigChange={handleConfigChange}
+                                onConvert={handleConvert}
+                                onCancel={handleCancelConfig}
+                            />
+                        ) : state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
                             <>
                                 {file ? (
                                     <div>
@@ -119,26 +150,6 @@ const PDFToJPG: React.FC<PDFToJPGProps> = ({ tool, onBack }) => {
                                                 </div>
                                             </div>
 
-                                            {/* Quality Selector */}
-                                            <div style={{ marginTop: '1.5rem' }}>
-                                                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
-                                                    Image Quality: {getQualityLabel(quality)}
-                                                </label>
-                                                <input
-                                                    type="range"
-                                                    min="0.5"
-                                                    max="1"
-                                                    step="0.1"
-                                                    value={quality}
-                                                    onChange={(e) => setQuality(parseFloat(e.target.value))}
-                                                    style={{ width: '100%' }}
-                                                />
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.5rem' }}>
-                                                    <span>Smaller file</span>
-                                                    <span>Better quality</span>
-                                                </div>
-                                            </div>
-
                                             <div style={{ padding: '1rem', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '0.5rem', marginTop: '1rem' }}>
                                                 <div style={{ fontSize: '0.875rem', color: '#1E40AF', lineHeight: 1.6 }}>
                                                     <strong>Note:</strong> Each page of your PDF will be converted to a separate JPG image.
@@ -149,8 +160,8 @@ const PDFToJPG: React.FC<PDFToJPGProps> = ({ tool, onBack }) => {
 
                                         {/* Action Buttons */}
                                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <button onClick={handleConvert} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
-                                                Convert to JPG
+                                            <button onClick={handleProceedToConfig} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
+                                                Configure & Convert →
                                             </button>
                                             <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>
                                                 Select Different PDF

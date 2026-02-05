@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Tool, ProcessState } from '../types';
+import { Tool, ProcessState, ImageToPdfConfig, ConversionStep } from '../types';
 import { imagesToPDF, downloadPDF } from '../services/pdfService';
+import { ImageToPdfConfig as ImageToPdfConfigComponent } from './config/ImageToPdfConfig';
 
 interface ImageToPDFProps {
     tool: Tool;
@@ -14,7 +15,9 @@ interface ImageToPDFProps {
 
 const ImageToPDF: React.FC<ImageToPDFProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
+    const [conversionStep, setConversionStep] = useState<ConversionStep>('upload');
     const [files, setFiles] = useState<File[]>([]);
+    const [config, setConfig] = useState<ImageToPdfConfig | undefined>(undefined);
     const [errorMsg, setErrorMsg] = useState<string>('');
     const [resultSize, setResultSize] = useState<number>(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,19 +53,28 @@ const ImageToPDF: React.FC<ImageToPDFProps> = ({ tool, onBack }) => {
         });
     };
 
-    const handleConvert = async () => {
+    const handleProceedToConfig = () => {
         if (files.length === 0) {
             setErrorMsg('Please select at least one image file');
             return;
         }
+        setConversionStep('configure');
+    };
 
+    const handleConfigChange = (newConfig: ImageToPdfConfig) => {
+        setConfig(newConfig);
+    };
+
+    const handleConvert = async (finalConfig: ImageToPdfConfig) => {
         setState(ProcessState.CONVERTING);
+        setConversionStep('processing');
         setErrorMsg('');
 
         try {
-            const pdfBytes = await imagesToPDF(files);
+            const pdfBytes = await imagesToPDF(files, finalConfig);
             setResultSize(pdfBytes.length);
             setState(ProcessState.COMPLETED);
+            setConversionStep('result');
 
             // Auto-download the PDF
             downloadPDF(pdfBytes, 'images.pdf');
@@ -70,12 +82,19 @@ const ImageToPDF: React.FC<ImageToPDFProps> = ({ tool, onBack }) => {
             console.error(err);
             setErrorMsg(err instanceof Error ? err.message : 'An unknown error occurred');
             setState(ProcessState.IDLE);
+            setConversionStep('upload');
         }
+    };
+
+    const handleCancelConfig = () => {
+        setConversionStep('upload');
     };
 
     const handleReset = () => {
         setState(ProcessState.IDLE);
+        setConversionStep('upload');
         setFiles([]);
+        setConfig(undefined);
         setErrorMsg('');
         setResultSize(0);
     };
@@ -118,7 +137,14 @@ const ImageToPDF: React.FC<ImageToPDFProps> = ({ tool, onBack }) => {
                             <div className="error-msg">{errorMsg}</div>
                         )}
 
-                        {state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
+                        {conversionStep === 'configure' ? (
+                            <ImageToPdfConfigComponent
+                                files={files}
+                                onConfigChange={handleConfigChange}
+                                onConvert={handleConvert}
+                                onCancel={handleCancelConfig}
+                            />
+                        ) : state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
                             <>
                                 {/* File List */}
                                 {files.length > 0 && (
@@ -239,8 +265,8 @@ const ImageToPDF: React.FC<ImageToPDFProps> = ({ tool, onBack }) => {
 
                                 {files.length > 0 && (
                                     <div className="flex-center">
-                                        <button onClick={handleConvert} className="btn-action">
-                                            Convert {files.length} Image{files.length !== 1 ? 's' : ''} to PDF
+                                        <button onClick={handleProceedToConfig} className="btn-action">
+                                            Configure & Convert to PDF →
                                         </button>
                                     </div>
                                 )}

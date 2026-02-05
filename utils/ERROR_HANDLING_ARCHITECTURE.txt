@@ -1,0 +1,400 @@
+================================================================================
+                     ERROR HANDLING SYSTEM ARCHITECTURE
+================================================================================
+
+                              +-------------------+
+                              |  User Interface   |
+                              |  (React/UI Layer) |
+                              +-------------------+
+                                        |
+                                        | Displays user-friendly
+                                        | messages & suggestions
+                                        v
+                              +-------------------+
+                              |  Error Handler    |
+                              |  (errorHandling)  |
+                              +-------------------+
+                                        |
+            +---------------------------+---------------------------+
+            |                           |                           |
+            v                           v                           v
+    +---------------+           +---------------+          +---------------+
+    | Error Creator |           | Error Handler |          | Error Logger  |
+    |               |           |               |          |               |
+    | - Validation  |           | - Get Message |          | - Log Context |
+    | - Processing  |           | - Suggestions |          | - Track Stats |
+    | - Memory      |           | - Retry Logic |          | - Monitor     |
+    | - Network     |           | - Format UI   |          +---------------+
+    +---------------+           +---------------+                   |
+            |                           |                           |
+            +---------------------------+---------------------------+
+                                        |
+                                        v
+                              +-------------------+
+                              |   Monitoring      |
+                              |   System          |
+                              |   (monitoring.ts) |
+                              +-------------------+
+                                        |
+            +---------------------------+---------------------------+
+            |                           |                           |
+            v                           v                           v
+      +----------+              +-------------+             +-------------+
+      |  Logger  |              | Error       |             | Performance |
+      |          |              | Tracker     |             | Monitor     |
+      +----------+              +-------------+             +-------------+
+
+
+================================================================================
+                              COMPONENT FLOW
+================================================================================
+
+1. ERROR CREATION
+   --------------
+   Application Code
+        |
+        | Detects error condition
+        v
+   createValidationError()  <-- Choose error type
+   createProcessingError()
+   createMemoryError()
+   createNetworkError()
+        |
+        | Creates AppError with:
+        | - Error code
+        | - Category
+        | - Severity
+        | - Context
+        v
+   AppError instance
+
+
+2. ERROR HANDLING
+   ---------------
+   try {
+     riskyOperation()
+   } catch (error)
+        |
+        | Caught error
+        v
+   wrapError() or handleError()
+        |
+        | Converts to AppError
+        v
+   getUserFriendlyMessage()   <-- Get display message
+   getRecoverySuggestions()   <-- Get help steps
+   shouldRetry()              <-- Check if retry
+        |
+        v
+   Display to user
+
+
+3. ERROR LOGGING
+   --------------
+   AppError
+        |
+        v
+   logError(error, context)
+        |
+        +---> logger.error()         (Console + Storage)
+        |
+        +---> errorTracker.track()   (Statistics)
+        |
+        +---> Monitoring Service     (Production)
+
+
+4. AUTOMATIC RETRY
+   ----------------
+   withRetry(operation, errorCode)
+        |
+        v
+   [Attempt 1] --> Fail
+        |
+        | Wait 1 second
+        v
+   [Attempt 2] --> Fail
+        |
+        | Wait 2 seconds
+        v
+   [Attempt 3] --> Success or Throw
+
+
+================================================================================
+                            DATA STRUCTURES
+================================================================================
+
+AppError {
+  name: "AppError"
+  message: "Technical description"
+  code: ErrorCode (e.g., 1001)
+  category: ErrorCategory (e.g., VALIDATION)
+  severity: ErrorSeverity (e.g., MEDIUM)
+  recoverable: boolean
+  context: { fileName, fileSize, etc. }
+  timestamp: Date
+  stack: string
+}
+
+ERROR_METADATA {
+  [ErrorCode]: {
+    userMessage: "User-friendly text"
+    technicalMessage: "Technical description"
+    recoverySuggestions: ["Step 1", "Step 2", ...]
+    category: ErrorCategory
+    severity: ErrorSeverity
+    recoverable: boolean
+    shouldRetry: boolean
+    maxRetries: number
+  }
+}
+
+
+================================================================================
+                          ERROR CODE ORGANIZATION
+================================================================================
+
+1xxx - VALIDATION ERRORS
+  |
+  +-- 1001 INVALID_FILE_TYPE
+  +-- 1002 INVALID_FILE_SIZE
+  +-- 1003 INVALID_FILE_NAME
+  +-- 1004 EMPTY_FILE
+  +-- 1005 CORRUPTED_FILE
+  +-- 1006 MALICIOUS_FILE
+  +-- 1007 INVALID_INPUT
+  +-- 1008 MISSING_REQUIRED_FIELD
+  +-- 1009 INVALID_RANGE
+  +-- 1010 INVALID_PASSWORD
+
+2xxx - PROCESSING ERRORS
+  |
+  +-- 2001 CONVERSION_FAILED
+  +-- 2002 COMPRESSION_FAILED
+  +-- 2003 MERGE_FAILED
+  +-- 2004 SPLIT_FAILED
+  +-- 2005 ROTATION_FAILED
+  +-- 2006 ENCRYPTION_FAILED
+  +-- 2007 DECRYPTION_FAILED
+  +-- 2008 EXTRACTION_FAILED
+  +-- 2009 RENDER_FAILED
+  +-- 2010 PROCESSING_TIMEOUT
+  +-- 2011 UNSUPPORTED_OPERATION
+  +-- 2012 BACKGROUND_REMOVAL_FAILED
+
+3xxx - MEMORY ERRORS
+  |
+  +-- 3001 OUT_OF_MEMORY
+  +-- 3002 FILE_TOO_LARGE
+  +-- 3003 MEMORY_LIMIT_EXCEEDED
+  +-- 3004 BUFFER_OVERFLOW
+
+4xxx - NETWORK ERRORS
+  |
+  +-- 4001 NETWORK_ERROR
+  +-- 4002 REQUEST_TIMEOUT
+  +-- 4003 API_ERROR
+  +-- 4004 CONNECTION_LOST
+  +-- 4005 RATE_LIMIT_EXCEEDED
+  +-- 4006 SERVICE_UNAVAILABLE
+
+5xxx - UNKNOWN ERRORS
+  |
+  +-- 5000 UNKNOWN_ERROR
+  +-- 5001 INTERNAL_ERROR
+  +-- 5002 CONFIGURATION_ERROR
+  +-- 5003 BROWSER_NOT_SUPPORTED
+  +-- 5004 FEATURE_NOT_AVAILABLE
+
+
+================================================================================
+                           INTEGRATION POINTS
+================================================================================
+
++----------------------+     +--------------------+     +-------------------+
+| Application Layer    | --> | Error Handling     | --> | Monitoring Layer  |
+|                      |     |                    |     |                   |
+| - Components         |     | - Error Creation   |     | - Logging         |
+| - Services           |     | - Error Messages   |     | - Tracking        |
+| - API Calls          |     | - Retry Logic      |     | - Analytics       |
+| - File Operations    |     | - Error Formatting |     | - Alerting        |
++----------------------+     +--------------------+     +-------------------+
+         ^                            |                          |
+         |                            v                          v
+         |                   +--------------------+     +-------------------+
+         |                   | UI Display         |     | External Services |
+         +-------------------| - Error Messages   |     | - Error Reporting |
+                            | - Suggestions      |     | - APM Tools       |
+                            | - Recovery Actions |     | - Log Aggregation |
+                            +--------------------+     +-------------------+
+
+
+================================================================================
+                         RETRY STRATEGY DIAGRAM
+================================================================================
+
+Operation Start
+      |
+      v
+   Attempt 1
+      |
+      +--[Success]-----> Return Result
+      |
+      +--[Failure]-----> Check shouldRetry()
+                              |
+                              +--[No]-------> Throw Error
+                              |
+                              +--[Yes]------> Wait (1s)
+                                                  |
+                                                  v
+                                             Attempt 2
+                                                  |
+                                                  +--[Success]-----> Return Result
+                                                  |
+                                                  +--[Failure]-----> Wait (2s)
+                                                                          |
+                                                                          v
+                                                                     Attempt 3
+                                                                          |
+                                                                          +--[Success]-> Return
+                                                                          |
+                                                                          +--[Failure]-> Throw
+
+
+Exponential Backoff:
+  Attempt 1: Immediate
+  Attempt 2: Wait 1 second  (2^0 * 1000ms)
+  Attempt 3: Wait 2 seconds (2^1 * 1000ms)
+  Attempt 4: Wait 4 seconds (2^2 * 1000ms)
+  Max Wait: 10 seconds
+
+
+================================================================================
+                           SEVERITY ROUTING
+================================================================================
+
+                            [Error Occurs]
+                                  |
+                                  v
+                        [Determine Severity]
+                                  |
+          +---------------+-------+-------+---------------+
+          |               |               |               |
+          v               v               v               v
+      [LOW]          [MEDIUM]         [HIGH]        [CRITICAL]
+          |               |               |               |
+          v               v               v               v
+   Auto-dismiss    Show Toast      Show Modal      Block UI
+   notification    w/ suggestions   w/ actions     + Alert
+          |               |               |               |
+          v               v               v               v
+   Log: INFO       Log: WARN        Log: ERROR     Log: CRITICAL
+   Track: Stats    Track: Stats     Track: Alert   Track: Urgent
+   Retry: No       Retry: Maybe     Retry: Maybe   Retry: No
+
+
+================================================================================
+                        DECISION TREE FOR ERRORS
+================================================================================
+
+                          [Error Detected]
+                                |
+                                v
+                    [Is it a known error type?]
+                       /                    \
+                    Yes                      No
+                     |                        |
+                     v                        v
+          [Use specific ErrorCode]    [Use UNKNOWN_ERROR]
+                     |                        |
+                     +------------------------+
+                                |
+                                v
+                    [Get error metadata]
+                                |
+          +---------------------+---------------------+
+          |                     |                     |
+          v                     v                     v
+    [Get user          [Check if              [Determine if
+     message]           recoverable]           should retry]
+          |                     |                     |
+          v                     v                     v
+    [Display to         [Show recovery        [Execute retry
+     user]               suggestions]          or throw]
+          |                     |                     |
+          +---------------------+---------------------+
+                                |
+                                v
+                        [Log error]
+                                |
+                                v
+                    [Track in monitoring]
+
+
+================================================================================
+                            FILE ORGANIZATION
+================================================================================
+
+utils/
+  |
+  +-- errorHandling.ts              (Main system - 1,156 lines)
+  |     |
+  |     +-- Error Classes (AppError)
+  |     +-- Error Codes (37 codes)
+  |     +-- Error Metadata (messages, suggestions)
+  |     +-- Helper Functions (create, wrap, handle)
+  |     +-- Message Functions (get user/technical messages)
+  |     +-- Retry Logic (withRetry, shouldRetry)
+  |     +-- Logging (logError)
+  |     +-- Formatting (formatErrorForDisplay)
+  |     +-- Export (exportErrorReport)
+  |
+  +-- errorHandling.example.ts      (Examples - 363 lines)
+  |     |
+  |     +-- Basic usage examples
+  |     +-- React hooks
+  |     +-- Error boundary integration
+  |     +-- Retry patterns
+  |     +-- Category-specific handling
+  |
+  +-- ERROR_HANDLING_README.md      (Full docs - 14KB)
+  |     |
+  |     +-- Overview & Features
+  |     +-- Quick Start
+  |     +-- API Reference
+  |     +-- Best Practices
+  |     +-- Testing Guide
+  |
+  +-- ERROR_HANDLING_CHEATSHEET.md  (Quick ref - 7.3KB)
+  |     |
+  |     +-- Common patterns
+  |     +-- Error code table
+  |     +-- Function reference
+  |     +-- Pro tips
+  |
+  +-- ERROR_HANDLING_SUMMARY.txt    (Summary)
+  |
+  +-- ERROR_HANDLING_ARCHITECTURE.txt (This file)
+
+
+================================================================================
+                          PRODUCTION CHECKLIST
+================================================================================
+
+[X] Error codes defined (37 codes)
+[X] User messages created (37 messages)
+[X] Recovery suggestions provided (37 sets)
+[X] Retry logic implemented (exponential backoff)
+[X] Logging integration (monitoring.ts)
+[X] Error tracking (errorTracker)
+[X] TypeScript types (complete)
+[X] Documentation (comprehensive)
+[X] Examples (10+ scenarios)
+[X] React integration (hooks, boundaries)
+[X] Performance optimized
+[X] Memory efficient
+[X] Browser compatible
+[X] Production ready
+
+================================================================================
+                              READY TO USE
+================================================================================

@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Tool, ProcessState } from '../types';
+import { Tool, ProcessState, SplitPdfConfig, ConversionStep } from '../types';
 import { splitPDF, getPDFInfo, downloadPDF } from '../services/pdfService';
+import { SplitPdfConfig as SplitPdfConfigComponent } from './config/SplitPdfConfig';
 
 interface SplitPDFProps {
     tool: Tool;
@@ -14,10 +15,12 @@ interface SplitPDFProps {
 
 const SplitPDF: React.FC<SplitPDFProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
+    const [conversionStep, setConversionStep] = useState<ConversionStep>('upload');
     const [file, setFile] = useState<File | null>(null);
     const [pageCount, setPageCount] = useState<number>(0);
     const [pageRanges, setPageRanges] = useState<string>('');
     const [splitMode, setSplitMode] = useState<'custom' | 'all'>('custom');
+    const [config, setConfig] = useState<SplitPdfConfig | undefined>(undefined);
     const [errorMsg, setErrorMsg] = useState<string>('');
     const [resultCount, setResultCount] = useState<number>(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,7 +44,23 @@ const SplitPDF: React.FC<SplitPDFProps> = ({ tool, onBack }) => {
         }
     };
 
-    const handleSplit = async () => {
+    const handleProceedToConfig = () => {
+        if (!file) {
+            setErrorMsg('Please select a PDF file');
+            return;
+        }
+        if (pageCount === 0) {
+            setErrorMsg('PDF has no pages');
+            return;
+        }
+        setConversionStep('configure');
+    };
+
+    const handleConfigChange = (newConfig: SplitPdfConfig) => {
+        setConfig(newConfig);
+    };
+
+    const handleSplit = async (finalConfig: SplitPdfConfig) => {
         if (!file) {
             setErrorMsg('Please select a PDF file');
             return;
@@ -53,25 +72,11 @@ const SplitPDF: React.FC<SplitPDFProps> = ({ tool, onBack }) => {
         }
 
         setState(ProcessState.CONVERTING);
+        setConversionStep('processing');
         setErrorMsg('');
 
         try {
-            let ranges: string[];
-
-            if (splitMode === 'all') {
-                // Split into individual pages
-                ranges = Array.from({ length: pageCount }, (_, i) => `${i + 1}`);
-            } else {
-                // Use custom ranges
-                if (!pageRanges.trim()) {
-                    setErrorMsg('Please enter page ranges (e.g., 1-3, 5, 7-9)');
-                    setState(ProcessState.IDLE);
-                    return;
-                }
-                ranges = pageRanges.split(',').map(r => r.trim()).filter(r => r.length > 0);
-            }
-
-            const results = await splitPDF(file, ranges);
+            const results = await splitPDF(file, finalConfig);
             setResultCount(results.length);
 
             // Download all split PDFs
@@ -79,20 +84,28 @@ const SplitPDF: React.FC<SplitPDFProps> = ({ tool, onBack }) => {
                 downloadPDF(result.pdf, result.name);
             });
 
+            setConversionStep('result');
             setState(ProcessState.COMPLETED);
         } catch (err) {
             console.error(err);
             setErrorMsg(err instanceof Error ? err.message : 'An unknown error occurred');
             setState(ProcessState.IDLE);
+            setConversionStep('upload');
         }
+    };
+
+    const handleCancelConfig = () => {
+        setConversionStep('upload');
     };
 
     const handleReset = () => {
         setState(ProcessState.IDLE);
+        setConversionStep('upload');
         setFile(null);
         setPageCount(0);
         setPageRanges('');
         setSplitMode('custom');
+        setConfig(undefined);
         setErrorMsg('');
         setResultCount(0);
     };
@@ -127,7 +140,14 @@ const SplitPDF: React.FC<SplitPDFProps> = ({ tool, onBack }) => {
                             <div className="error-msg">{errorMsg}</div>
                         )}
 
-                        {state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
+                        {conversionStep === 'configure' && file ? (
+                            <SplitPdfConfigComponent
+                                file={file}
+                                onConfigChange={handleConfigChange}
+                                onSplit={handleSplit}
+                                onCancel={handleCancelConfig}
+                            />
+                        ) : state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
                             <>
                                 {file && pageCount > 0 ? (
                                     <div style={{ marginBottom: '2rem' }}>
@@ -194,8 +214,8 @@ const SplitPDF: React.FC<SplitPDFProps> = ({ tool, onBack }) => {
 
                                         {/* Action Buttons */}
                                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <button onClick={handleSplit} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
-                                                Split PDF
+                                            <button onClick={handleProceedToConfig} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
+                                                Configure & Split →
                                             </button>
                                             <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>
                                                 Select Different PDF

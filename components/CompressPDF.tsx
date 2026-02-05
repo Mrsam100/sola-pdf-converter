@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Tool, ProcessState } from '../types';
+import { Tool, ProcessState, CompressPdfConfig, ConversionStep } from '../types';
 import { compressPDF, downloadPDF } from '../services/pdfService';
+import { CompressPdfConfig as CompressPdfConfigComponent } from './config/CompressPdfConfig';
 
 interface CompressPDFProps {
     tool: Tool;
@@ -14,7 +15,9 @@ interface CompressPDFProps {
 
 const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
+    const [conversionStep, setConversionStep] = useState<ConversionStep>('upload');
     const [file, setFile] = useState<File | null>(null);
+    const [config, setConfig] = useState<CompressPdfConfig | undefined>(undefined);
     const [originalSize, setOriginalSize] = useState<number>(0);
     const [compressedSize, setCompressedSize] = useState<number>(0);
     const [errorMsg, setErrorMsg] = useState<string>('');
@@ -30,33 +33,49 @@ const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
         }
     };
 
-    const handleCompress = async () => {
+    const handleProceedToConfig = () => {
         if (!file) {
             setErrorMsg('Please select a PDF file');
             return;
         }
+        setConversionStep('configure');
+    };
 
+    const handleConfigChange = (newConfig: CompressPdfConfig) => {
+        setConfig(newConfig);
+    };
+
+    const handleCompress = async (finalConfig: CompressPdfConfig) => {
         setState(ProcessState.CONVERTING);
+        setConversionStep('processing');
         setErrorMsg('');
 
         try {
-            const compressedPdf = await compressPDF(file);
+            const compressedPdf = await compressPDF(file!, finalConfig);
             setCompressedSize(compressedPdf.length);
             setState(ProcessState.COMPLETED);
+            setConversionStep('result');
 
             // Auto-download the compressed PDF
-            const fileName = file.name.replace('.pdf', '_compressed.pdf');
+            const fileName = file!.name.replace('.pdf', '_compressed.pdf');
             downloadPDF(compressedPdf, fileName);
         } catch (err) {
             console.error(err);
             setErrorMsg(err instanceof Error ? err.message : 'An unknown error occurred');
             setState(ProcessState.IDLE);
+            setConversionStep('upload');
         }
+    };
+
+    const handleCancelConfig = () => {
+        setConversionStep('upload');
     };
 
     const handleReset = () => {
         setState(ProcessState.IDLE);
+        setConversionStep('upload');
         setFile(null);
+        setConfig(undefined);
         setOriginalSize(0);
         setCompressedSize(0);
         setErrorMsg('');
@@ -106,7 +125,14 @@ const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
                             <div className="error-msg">{errorMsg}</div>
                         )}
 
-                        {state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
+                        {conversionStep === 'configure' ? (
+                            <CompressPdfConfigComponent
+                                file={file!}
+                                onConfigChange={handleConfigChange}
+                                onCompress={handleCompress}
+                                onCancel={handleCancelConfig}
+                            />
+                        ) : state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
                             <>
                                 {file ? (
                                     <div>
@@ -136,8 +162,8 @@ const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
 
                                         {/* Action Buttons */}
                                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <button onClick={handleCompress} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
-                                                Compress PDF
+                                            <button onClick={handleProceedToConfig} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
+                                                Configure & Compress →
                                             </button>
                                             <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>
                                                 Select Different PDF

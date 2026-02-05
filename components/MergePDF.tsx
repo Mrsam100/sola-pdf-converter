@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Tool, ProcessState } from '../types';
+import { Tool, ProcessState, MergePdfConfig, ConversionStep } from '../types';
 import { mergePDFs, downloadPDF } from '../services/pdfService';
+import { MergePdfConfig as MergePdfConfigComponent } from './config/MergePdfConfig';
 
 interface MergePDFProps {
     tool: Tool;
@@ -14,7 +15,9 @@ interface MergePDFProps {
 
 const MergePDF: React.FC<MergePDFProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
+    const [conversionStep, setConversionStep] = useState<ConversionStep>('upload');
     const [files, setFiles] = useState<File[]>([]);
+    const [config, setConfig] = useState<MergePdfConfig | undefined>(undefined);
     const [errorMsg, setErrorMsg] = useState<string>('');
     const [resultSize, setResultSize] = useState<number>(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,19 +53,28 @@ const MergePDF: React.FC<MergePDFProps> = ({ tool, onBack }) => {
         });
     };
 
-    const handleMerge = async () => {
+    const handleProceedToConfig = () => {
         if (files.length < 2) {
             setErrorMsg('Please select at least 2 PDF files to merge');
             return;
         }
+        setConversionStep('configure');
+    };
 
+    const handleConfigChange = (newConfig: MergePdfConfig) => {
+        setConfig(newConfig);
+    };
+
+    const handleMerge = async (finalConfig: MergePdfConfig) => {
         setState(ProcessState.CONVERTING);
+        setConversionStep('processing');
         setErrorMsg('');
 
         try {
-            const mergedPdf = await mergePDFs(files);
+            const mergedPdf = await mergePDFs(files, finalConfig);
             setResultSize(mergedPdf.length);
             setState(ProcessState.COMPLETED);
+            setConversionStep('result');
 
             // Auto-download the merged PDF
             downloadPDF(mergedPdf, 'merged.pdf');
@@ -70,12 +82,19 @@ const MergePDF: React.FC<MergePDFProps> = ({ tool, onBack }) => {
             console.error(err);
             setErrorMsg(err instanceof Error ? err.message : 'An unknown error occurred');
             setState(ProcessState.IDLE);
+            setConversionStep('upload');
         }
+    };
+
+    const handleCancelConfig = () => {
+        setConversionStep('upload');
     };
 
     const handleReset = () => {
         setState(ProcessState.IDLE);
+        setConversionStep('upload');
         setFiles([]);
+        setConfig(undefined);
         setErrorMsg('');
         setResultSize(0);
     };
@@ -118,7 +137,14 @@ const MergePDF: React.FC<MergePDFProps> = ({ tool, onBack }) => {
                             <div className="error-msg">{errorMsg}</div>
                         )}
 
-                        {state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
+                        {conversionStep === 'configure' ? (
+                            <MergePdfConfigComponent
+                                files={files}
+                                onConfigChange={handleConfigChange}
+                                onMerge={handleMerge}
+                                onCancel={handleCancelConfig}
+                            />
+                        ) : state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
                             <>
                                 {/* File List */}
                                 {files.length > 0 && (
@@ -239,8 +265,8 @@ const MergePDF: React.FC<MergePDFProps> = ({ tool, onBack }) => {
 
                                 {files.length >= 2 && (
                                     <div className="flex-center">
-                                        <button onClick={handleMerge} className="btn-action">
-                                            Merge {files.length} PDFs
+                                        <button onClick={handleProceedToConfig} className="btn-action">
+                                            Configure & Merge PDFs →
                                         </button>
                                     </div>
                                 )}
