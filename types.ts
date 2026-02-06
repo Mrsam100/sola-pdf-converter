@@ -11,10 +11,13 @@ export interface Tool {
   icon: string; // SVG path
 }
 
-export type ViewState = 
+export type PageId = 'privacy' | 'terms' | 'contact' | 'api';
+
+export type ViewState =
   | { type: 'home' }
   | { type: 'dashboard' } // The grid view
-  | { type: 'tool', tool: Tool };
+  | { type: 'tool', tool: Tool }
+  | { type: 'page', pageId: PageId };
 
 export enum ProcessState {
   IDLE = 'idle',

@@ -31,7 +31,7 @@ const Navbar: React.FC<NavbarProps> = ({ onNavClick, currentView }) => {
     onNavClick(e, targetId);
   };
 
-  const isLightBackground = currentView === 'dashboard' || currentView === 'tool' || scrolled;
+  const isLightBackground = currentView === 'dashboard' || currentView === 'tool' || currentView === 'page' || scrolled;
 
   return (
     <>

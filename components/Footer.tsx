@@ -4,13 +4,15 @@
 */
 
 import React from 'react';
+import { PageId } from '../types';
 import { BRAND_NAME, STUDIO_NAME } from '../constants';
 
 interface FooterProps {
   onLinkClick: (e: React.MouseEvent<HTMLElement>, targetId: string) => void;
+  onPageClick: (pageId: PageId) => void;
 }
 
-const Footer: React.FC<FooterProps> = ({ onLinkClick }) => {
+const Footer: React.FC<FooterProps> = ({ onLinkClick, onPageClick }) => {
   return (
     <footer className="footer">
       <div className="footer-grid">
@@ -53,10 +55,10 @@ const Footer: React.FC<FooterProps> = ({ onLinkClick }) => {
         <div className="footer-col">
           <h4>Legal & Support</h4>
           <ul className="footer-links">
-            <li><a href="#">Privacy Policy</a></li>
-            <li><a href="#">Terms of Service</a></li>
-            <li><a href="#">Contact Support</a></li>
-            <li><a href="#">API Access</a></li>
+            <li><a href="#privacy" onClick={(e) => { e.preventDefault(); onPageClick('privacy'); }}>Privacy Policy</a></li>
+            <li><a href="#terms" onClick={(e) => { e.preventDefault(); onPageClick('terms'); }}>Terms of Service</a></li>
+            <li><a href="#contact" onClick={(e) => { e.preventDefault(); onPageClick('contact'); }}>Contact Support</a></li>
+            <li><a href="#api" onClick={(e) => { e.preventDefault(); onPageClick('api'); }}>API Access</a></li>
           </ul>
         </div>
       </div>

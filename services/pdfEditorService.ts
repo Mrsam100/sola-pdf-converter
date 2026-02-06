@@ -65,13 +65,118 @@ export interface DrawingPath {
     width: number;
 }
 
+export interface WhiteoutElement {
+    id: string;
+    pageNumber: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+export interface DetectedTextItem {
+    id: string;
+    text: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    fontSize: number;
+    fontFamily: string;
+    color: string;
+    transform: number[];
+    pageNumber: number;
+}
+
 export interface EditorState {
     texts: TextElement[];
     images: ImageElement[];
     shapes: ShapeElement[];
     annotations: AnnotationElement[];
     drawings: DrawingPath[];
+    whiteouts: WhiteoutElement[];
 }
+
+/**
+ * Extract text items from a PDF page with canvas coordinates
+ */
+export const extractTextItems = async (
+    file: File,
+    pageNumber: number,
+    scale: number = 1.5
+): Promise<DetectedTextItem[]> => {
+    const { pdfjsLib } = await import('./pdfConfig');
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await (pdfjsLib.getDocument({ data: arrayBuffer })).promise;
+    const page = await pdf.getPage(pageNumber);
+    const viewport = page.getViewport({ scale });
+    const textContent = await page.getTextContent();
+
+    const items: DetectedTextItem[] = [];
+    let counter = 0;
+
+    for (const item of textContent.items) {
+        if (!('str' in item) || !item.str.trim()) continue;
+
+        const tx = item.transform;
+        // Font size from transform matrix
+        const fontSize = Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1]);
+
+        // Convert PDF coordinates to canvas coordinates using viewport transform
+        const [canvasX, canvasY] = viewport.convertToViewportPoint(tx[4], tx[5]);
+
+        // Width is estimated from string length and font size
+        const estimatedWidth = item.width * scale;
+        const estimatedHeight = fontSize * scale;
+
+        items.push({
+            id: `detected-${pageNumber}-${counter++}`,
+            text: item.str,
+            x: canvasX,
+            y: canvasY - estimatedHeight, // Adjust Y so it's top-left
+            width: estimatedWidth,
+            height: estimatedHeight,
+            fontSize: fontSize * scale,
+            fontFamily: item.fontName || 'Helvetica',
+            color: '#000000',
+            transform: tx,
+            pageNumber,
+        });
+    }
+
+    return items;
+};
+
+/**
+ * Apply whiteout elements to PDF (drawn FIRST, before other elements)
+ */
+export const applyWhiteoutElements = async (
+    pdfDoc: PDFDocument,
+    whiteouts: WhiteoutElement[],
+    scale: number = 1.5
+): Promise<void> => {
+    const pages = pdfDoc.getPages();
+
+    for (const wo of whiteouts) {
+        const page = pages[wo.pageNumber - 1];
+        const { height } = page.getSize();
+
+        // Convert from canvas coords to PDF coords
+        const pdfX = wo.x / scale;
+        const pdfY = height - (wo.y / scale) - (wo.height / scale);
+        const pdfW = wo.width / scale;
+        const pdfH = wo.height / scale;
+
+        page.drawRectangle({
+            x: pdfX,
+            y: pdfY,
+            width: pdfW,
+            height: pdfH,
+            color: rgb(1, 1, 1), // white
+        });
+    }
+};
 
 /**
  * Load PDF and get page information
@@ -223,6 +328,7 @@ export const applyShapeElements = async (
         const color = hexToRgb(shape.color);
 
         if (shape.type === 'rectangle') {
+            const fill = shape.fillColor ? hexToRgb(shape.fillColor) : undefined;
             page.drawRectangle({
                 x: shape.x,
                 y: height - shape.y - shape.height,
@@ -230,9 +336,10 @@ export const applyShapeElements = async (
                 height: shape.height,
                 borderColor: rgb(color.r, color.g, color.b),
                 borderWidth: shape.strokeWidth,
-                color: shape.fillColor ? hexToRgb(shape.fillColor) : undefined,
+                color: fill ? rgb(fill.r, fill.g, fill.b) : undefined,
             });
         } else if (shape.type === 'circle') {
+            const fill = shape.fillColor ? hexToRgb(shape.fillColor) : undefined;
             page.drawEllipse({
                 x: shape.x + shape.width / 2,
                 y: height - shape.y - shape.height / 2,
@@ -240,7 +347,7 @@ export const applyShapeElements = async (
                 yScale: shape.height / 2,
                 borderColor: rgb(color.r, color.g, color.b),
                 borderWidth: shape.strokeWidth,
-                color: shape.fillColor ? hexToRgb(shape.fillColor) : undefined,
+                color: fill ? rgb(fill.r, fill.g, fill.b) : undefined,
             });
         } else if (shape.type === 'line') {
             page.drawLine({
@@ -321,16 +428,22 @@ export const applyDrawingPaths = async (
 };
 
 /**
- * Save edited PDF
+ * Save edited PDF — whiteouts applied first, then all other elements
  */
 export const saveEditedPDF = async (
     file: File,
-    editorState: EditorState
+    editorState: EditorState,
+    scale: number = 1.5
 ): Promise<Uint8Array> => {
     const arrayBuffer = await file.arrayBuffer();
     const pdfDoc = await PDFDocument.load(arrayBuffer);
 
-    // Apply all modifications
+    // Apply whiteouts FIRST (covers original content)
+    if (editorState.whiteouts.length > 0) {
+        await applyWhiteoutElements(pdfDoc, editorState.whiteouts, scale);
+    }
+
+    // Then overlay new content
     await applyTextElements(pdfDoc, editorState.texts);
     await applyImageElements(pdfDoc, editorState.images);
     await applyShapeElements(pdfDoc, editorState.shapes);

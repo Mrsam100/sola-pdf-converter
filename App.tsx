@@ -10,7 +10,8 @@ import ProductGrid from './components/ProductGrid';
 import ProductDetail from './components/ProductDetail';
 import About from './components/About';
 import Footer from './components/Footer';
-import { ViewState } from './types';
+import LegalPage from './components/LegalPage';
+import { ViewState, PageId } from './types';
 import { setupGlobalErrorHandling, logger, performanceMonitor } from './utils/monitoring';
 import { MobileOptimized, LowBatteryWarning, SlowConnectionWarning } from './components/MobileOptimized';
 import ToastContainer from './components/Toast';
@@ -96,9 +97,19 @@ function App() {
               onBack={() => setView({ type: 'dashboard' })}
             />
           )}
+
+          {view.type === 'page' && (
+            <LegalPage
+              pageId={view.pageId}
+              onBack={() => { setView({ type: 'home' }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            />
+          )}
         </main>
 
-        <Footer onLinkClick={handleNavClick} />
+        <Footer
+          onLinkClick={handleNavClick}
+          onPageClick={(pageId: PageId) => { setView({ type: 'page', pageId }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+        />
 
         {/* Mobile-specific warnings */}
         <LowBatteryWarning />
