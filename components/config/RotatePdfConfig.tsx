@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Rotate PDF Configuration Dashboard
- * Simple, professional rotation settings
+ * Professional-grade configuration UI matching ilovepdf.com quality
+ * Ready for millions of users
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { RotatePdfConfig } from '../../types';
 import { DEFAULT_ROTATE_PDF_CONFIG } from '../../types';
 import { configService } from '../../services/configService';
+import { PagePreview } from './PagePreview';
 
 interface RotatePdfConfigProps {
   file: File;
@@ -27,6 +29,22 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
   const [config, setConfig] = useState<RotatePdfConfig>(() =>
     configService.loadConfig<RotatePdfConfig>('rotate-pdf')
   );
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageCount, setPageCount] = useState<number>(0);
+
+  useEffect(() => {
+    const loadPageCount = async () => {
+      try {
+        const { pdfjsLib } = await import('../../services/pdfConfig');
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        setPageCount(pdf.numPages);
+      } catch (err) {
+        console.error('Failed to load PDF page count:', err);
+      }
+    };
+    loadPageCount();
+  }, [file]);
 
   const updateConfig = (updates: Partial<RotatePdfConfig>) => {
     const newConfig = { ...config, ...updates };
@@ -35,109 +53,360 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
     configService.saveConfig('rotate-pdf', newConfig);
   };
 
-  const rotations: { value: 90 | 180 | 270; label: string; icon: string }[] = [
-    { value: 90, label: '90° Clockwise', icon: '↻' },
-    { value: 180, label: '180° Upside Down', icon: '↻↻' },
-    { value: 270, label: '270° (90° Counter)', icon: '↺' },
+  const handlePrevPage = () => {
+    if (currentPage > 1) setCurrentPage(currentPage - 1);
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < pageCount) setCurrentPage(currentPage + 1);
+  };
+
+  const rotations: { value: 90 | 180 | 270; label: string }[] = [
+    { value: 90, label: '90° clockwise' },
+    { value: 180, label: '180° upside down' },
+    { value: 270, label: '270° (90° counter)' },
   ];
 
+  // Dynamic rotation style for preview
+  const previewRotationStyle = useMemo((): React.CSSProperties => ({
+    transform: `rotate(${config.rotation}deg)`,
+    transition: 'transform 0.5s ease',
+    transformOrigin: 'center center',
+  }), [config.rotation]);
+
+  const containerStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: '60% 40%',
+    minHeight: '100vh',
+    backgroundColor: '#f8f9fa',
+  };
+
+  const previewSectionStyle: React.CSSProperties = {
+    backgroundColor: '#fff',
+    padding: '40px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const configSectionStyle: React.CSSProperties = {
+    backgroundColor: '#fff',
+    padding: '40px 32px',
+    borderLeft: '1px solid #e9ecef',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
+  const sectionStyle: React.CSSProperties = {
+    marginBottom: '28px',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#212529',
+    marginBottom: '12px',
+    display: 'block',
+  };
+
+  const rotationButtonStyle = (isActive: boolean): React.CSSProperties => ({
+    padding: '16px',
+    border: isActive ? '2px solid #d5232b' : '2px solid #dee2e6',
+    borderRadius: '8px',
+    backgroundColor: isActive ? '#fff5f5' : '#fff',
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    fontSize: '14px',
+    fontWeight: isActive ? '600' : '400',
+    color: isActive ? '#d5232b' : '#495057',
+    outline: 'none',
+    marginBottom: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  });
+
   return (
-    <div style={{ maxWidth: '600px', margin: '0 auto', padding: '24px', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-      <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-        <h2 style={{ fontSize: '28px', fontWeight: '700', color: '#333', marginBottom: '8px' }}>
-          Rotate PDF
-        </h2>
-        <p style={{ fontSize: '14px', color: '#666' }}>{file.name}</p>
-      </div>
-
-      {/* Rotation Angle */}
-      <div style={{ marginBottom: '24px' }}>
-        <div style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>
-          🔄 Rotation Angle
-        </div>
-        <div style={{ display: 'grid', gap: '12px' }}>
-          {rotations.map(({ value, label, icon }) => (
-            <button
-              key={value}
-              style={{
-                padding: '20px',
-                border: config.rotation === value ? '2px solid #4CAF50' : '2px solid #e0e0e0',
-                borderRadius: '8px',
-                backgroundColor: config.rotation === value ? '#f1f8f4' : '#fff',
-                cursor: 'pointer',
-                fontSize: '16px',
+    <div style={containerStyle}>
+      {/* LEFT: Preview Section */}
+      <div style={previewSectionStyle}>
+        <div style={{
+          maxWidth: '450px',
+          width: '100%',
+        }}>
+          {/* File info */}
+          <div style={{
+            marginBottom: '24px',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              fontSize: '13px',
+              color: '#6c757d',
+              marginBottom: '8px',
+            }}>
+              {file.name}
+            </div>
+            {pageCount > 0 && (
+              <div style={{
+                fontSize: '14px',
                 fontWeight: '600',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                transition: 'all 0.2s',
-              }}
-              onClick={() => updateConfig({ rotation: value })}
-            >
-              <span style={{ fontSize: '28px' }}>{icon}</span>
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+                color: '#d5232b',
+              }}>
+                Page {currentPage} of {pageCount}
+              </div>
+            )}
+          </div>
 
-      {/* Page Selection */}
-      <div style={{ marginBottom: '32px', padding: '16px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
-        <div style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>
-          📄 Apply to
-        </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', cursor: 'pointer' }}>
-          <input
-            type="radio"
-            checked={config.pageSelection === 'all'}
-            onChange={() => updateConfig({ pageSelection: 'all', pageNumbers: undefined })}
-            style={{ width: '18px', height: '18px' }}
-          />
-          <span>All pages</span>
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-          <input
-            type="radio"
-            checked={config.pageSelection === 'specific'}
-            onChange={() => updateConfig({ pageSelection: 'specific' })}
-            style={{ width: '18px', height: '18px' }}
-          />
-          <span>Specific pages</span>
-        </label>
+          {/* Preview with dynamic rotation */}
+          <div style={{
+            padding: '24px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            textAlign: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '550px',
+          }}>
+            <div style={previewRotationStyle}>
+              <PagePreview file={file} pageNumber={currentPage} width={400} height={500} />
+            </div>
+          </div>
 
-        {config.pageSelection === 'specific' && (
-          <input
-            type="text"
-            placeholder="e.g., 1,3-5,7"
-            style={{
-              width: '100%',
-              marginTop: '12px',
-              padding: '10px',
-              border: '1px solid #ddd',
-              borderRadius: '6px',
+          {/* Rotation indicator */}
+          <div style={{
+            marginTop: '20px',
+            padding: '16px',
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            border: '1px solid #e9ecef',
+            textAlign: 'center',
+          }}>
+            <div style={{
               fontSize: '14px',
-            }}
-            onChange={(e) => {
-              const pages = e.target.value.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p));
-              updateConfig({ pageNumbers: pages });
-            }}
-          />
-        )}
+              color: '#6c757d',
+              marginBottom: '8px',
+            }}>
+              Current rotation
+            </div>
+            <div style={{
+              fontSize: '32px',
+              fontWeight: '700',
+              color: '#d5232b',
+              marginBottom: '12px',
+              transition: 'all 0.3s ease',
+            }}>
+              {config.rotation}°
+            </div>
+            {/* Visual rotation indicator (circular arrow) */}
+            <svg width="60" height="60" style={{ margin: '0 auto', display: 'block' }}>
+              <circle
+                cx="30"
+                cy="30"
+                r="25"
+                stroke="#d5232b"
+                strokeWidth="3"
+                fill="none"
+              />
+              <g
+                style={{
+                  transform: `rotate(${config.rotation}deg)`,
+                  transformOrigin: '30px 30px',
+                  transition: 'transform 0.5s ease',
+                }}
+              >
+                <path
+                  d="M30 5 L35 12 L25 12 Z"
+                  fill="#d5232b"
+                />
+              </g>
+            </svg>
+          </div>
+
+          {/* Page Navigation */}
+          {pageCount > 1 && (
+            <div style={{
+              marginTop: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+            }}>
+              <button
+                onClick={handlePrevPage}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '4px',
+                  backgroundColor: '#fff',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  opacity: currentPage === 1 ? 0.5 : 1,
+                  fontSize: '13px',
+                  color: '#495057',
+                }}
+              >
+                ← Prev
+              </button>
+              <span style={{ fontSize: '13px', color: '#6c757d' }}>
+                {currentPage} / {pageCount}
+              </span>
+              <button
+                onClick={handleNextPage}
+                disabled={currentPage === pageCount}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '4px',
+                  backgroundColor: '#fff',
+                  cursor: currentPage === pageCount ? 'not-allowed' : 'pointer',
+                  opacity: currentPage === pageCount ? 0.5 : 1,
+                  fontSize: '13px',
+                  color: '#495057',
+                }}
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+      {/* RIGHT: Configuration Section */}
+      <div style={configSectionStyle}>
+        {/* Header */}
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#212529', marginBottom: '32px' }}>
+          Rotate PDF options
+        </h2>
+
+        {/* Rotation Angle */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Rotation angle</label>
+          <div>
+            {rotations.map(({ value, label }) => (
+              <button
+                key={value}
+                style={rotationButtonStyle(config.rotation === value)}
+                onClick={() => updateConfig({ rotation: value })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Page Selection */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Apply to</label>
+          <div style={{
+            padding: '16px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+          }}>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              marginBottom: '12px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="radio"
+                checked={config.pageSelection === 'all'}
+                onChange={() => updateConfig({ pageSelection: 'all', pageNumbers: undefined })}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  accentColor: '#d5232b',
+                  cursor: 'pointer',
+                }}
+              />
+              <span style={{ fontSize: '14px', color: '#495057' }}>
+                All pages
+              </span>
+            </label>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="radio"
+                checked={config.pageSelection === 'specific'}
+                onChange={() => updateConfig({ pageSelection: 'specific' })}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  accentColor: '#d5232b',
+                  cursor: 'pointer',
+                }}
+              />
+              <span style={{ fontSize: '14px', color: '#495057' }}>
+                Specific pages
+              </span>
+            </label>
+
+            {config.pageSelection === 'specific' && (
+              <input
+                type="text"
+                placeholder="e.g., 1, 3-5, 7"
+                style={{
+                  width: '100%',
+                  marginTop: '12px',
+                  padding: '10px 12px',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  color: '#495057',
+                  backgroundColor: '#fff',
+                  outline: 'none',
+                }}
+                onChange={(e) => {
+                  const pages = e.target.value.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p));
+                  updateConfig({ pageNumbers: pages });
+                }}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Spacer to push button to bottom */}
+        <div style={{ flex: 1 }} />
+
+        {/* Rotate Button */}
         <button
-          style={{ padding: '14px 32px', borderRadius: '8px', border: 'none', backgroundColor: '#e0e0e0', color: '#666', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-        <button
-          style={{ padding: '14px 32px', borderRadius: '8px', border: 'none', backgroundColor: '#4CAF50', color: '#fff', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}
           onClick={() => onRotate(config)}
+          style={{
+            width: '100%',
+            padding: '16px',
+            backgroundColor: '#d5232b',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            transition: 'background-color 0.2s',
+            marginTop: 'auto',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#b81f26';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#d5232b';
+          }}
         >
-          Rotate PDF →
+          Rotate PDF
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ marginLeft: '4px' }}>
+            <circle cx="10" cy="10" r="9" stroke="white" strokeWidth="2" fill="none"/>
+            <path d="M8 10L12 10M12 10L10 8M12 10L10 12" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </button>
       </div>
     </div>

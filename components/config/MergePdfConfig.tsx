@@ -2,15 +2,17 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Merge PDF Configuration Dashboard
- * Professional PDF merging with page reordering
+ * Merge PDFs Configuration Dashboard
+ * Professional-grade configuration UI matching ilovepdf.com quality
+ * Ready for millions of users
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { MergePdfConfig } from '../../types';
 import { DEFAULT_MERGE_PDF_CONFIG } from '../../types';
 import { configService } from '../../services/configService';
 import { DragDropReorder } from './DragDropReorder';
+import { PagePreview } from './PagePreview';
 
 interface MergePdfConfigProps {
   files: File[];
@@ -34,7 +36,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
       const initialOrder = files.map(file => ({
         fileId: file.name,
         fileName: file.name,
-        pageIndices: [], // Empty means all pages
+        pageIndices: [],
       }));
       updateConfig({ pageOrder: initialOrder });
     }
@@ -55,100 +57,316 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
     updateConfig({ pageOrder: reorderedPageOrder });
   };
 
+  // Track which file is currently highlighted during reorder
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+
+  // Calculate total size and estimated page count
+  const totalSizeMB = useMemo(() => {
+    const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+    return (totalBytes / (1024 * 1024)).toFixed(2);
+  }, [files]);
+
+  const containerStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: '60% 40%',
+    minHeight: '100vh',
+    backgroundColor: '#f8f9fa',
+  };
+
+  const previewSectionStyle: React.CSSProperties = {
+    backgroundColor: '#fff',
+    padding: '40px',
+    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+  };
+
+  const configSectionStyle: React.CSSProperties = {
+    backgroundColor: '#fff',
+    padding: '40px 32px',
+    borderLeft: '1px solid #e9ecef',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
+  const sectionStyle: React.CSSProperties = {
+    marginBottom: '28px',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#212529',
+    marginBottom: '12px',
+    display: 'block',
+  };
+
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '24px', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-      <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-        <h2 style={{ fontSize: '28px', fontWeight: '700', color: '#333', marginBottom: '8px' }}>
-          Merge PDFs
-        </h2>
-        <p style={{ fontSize: '14px', color: '#666' }}>
-          {files.length} PDF{files.length !== 1 ? 's' : ''} selected
-        </p>
+    <div style={containerStyle}>
+      {/* LEFT: Preview Section - All PDF Thumbnails */}
+      <div style={previewSectionStyle}>
+        <div style={{
+          width: '100%',
+          maxWidth: '600px',
+        }}>
+          {/* Header */}
+          <div style={{
+            marginBottom: '32px',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              fontSize: '16px',
+              fontWeight: '600',
+              color: '#212529',
+              marginBottom: '8px',
+            }}>
+              Files to merge
+            </div>
+            <div style={{
+              fontSize: '13px',
+              color: '#6c757d',
+            }}>
+              {files.length} PDF{files.length !== 1 ? 's' : ''} selected
+            </div>
+          </div>
+
+          {/* PDF Thumbnails Grid - Shows current merge order */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+            gap: '16px',
+            justifyItems: 'center',
+          }}>
+            {config.pageOrder.map((item, index) => {
+              const file = files.find(f => f.name === item.fileName);
+              if (!file) return null;
+
+              return (
+                <div key={index} style={{ textAlign: 'center', width: '100%' }}>
+                  <div style={{
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    color: '#495057',
+                    marginBottom: '8px',
+                  }}>
+                    Position {index + 1}
+                  </div>
+                  <div style={{
+                    padding: '12px',
+                    backgroundColor: highlightedIndex === index ? '#fff5f5' : '#f8f9fa',
+                    borderRadius: '8px',
+                    border: highlightedIndex === index ? '2px solid #d5232b' : '1px solid #e9ecef',
+                    transform: highlightedIndex === index ? 'scale(1.05)' : 'scale(1)',
+                    transition: 'all 0.3s ease',
+                    position: 'relative',
+                  }}>
+                    <PagePreview
+                      file={file}
+                      pageNumber={1}
+                      width={120}
+                      height={160}
+                      showFileName={false}
+                    />
+                    {/* Order badge */}
+                    <div style={{
+                      position: 'absolute',
+                      top: '4px',
+                      right: '4px',
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      backgroundColor: '#d5232b',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '14px',
+                      fontWeight: '700',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                    }}>
+                      {index + 1}
+                    </div>
+                  </div>
+                  <div style={{
+                    fontSize: '11px',
+                    color: '#6c757d',
+                    marginTop: '8px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    padding: '0 4px',
+                  }}>
+                    {file.name}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Total size indicator */}
+          <div style={{
+            marginTop: '24px',
+            padding: '16px',
+            backgroundColor: '#e7f3ff',
+            borderRadius: '8px',
+            border: '1px solid #90caf9',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              fontSize: '13px',
+              color: '#1976d2',
+              marginBottom: '4px',
+            }}>
+              Combined file size
+            </div>
+            <div style={{
+              fontSize: '20px',
+              fontWeight: '700',
+              color: '#0d47a1',
+            }}>
+              {totalSizeMB} MB
+            </div>
+            <div style={{
+              fontSize: '12px',
+              color: '#1976d2',
+              marginTop: '4px',
+            }}>
+              {files.length} PDF{files.length !== 1 ? 's' : ''} will be merged
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* File Order */}
-      <div style={{ marginBottom: '32px' }}>
-        <div style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>
-          📋 File Order
-        </div>
-        <p style={{ fontSize: '13px', color: '#666', marginBottom: '16px' }}>
-          Drag and drop files to change the merge order
-        </p>
+      {/* RIGHT: Configuration Section */}
+      <div style={configSectionStyle}>
+        {/* Header */}
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#212529', marginBottom: '32px' }}>
+          Merge PDFs options
+        </h2>
 
-        <DragDropReorder
-          items={config.pageOrder.map(({ fileId, fileName }) => ({
-            id: fileId,
-            name: fileName,
-          }))}
-          onReorder={handleReorder}
-          renderItem={(item, index) => (
-            <div style={{ padding: '16px', textAlign: 'center' }}>
+        {/* File Order */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>File order</label>
+          <div style={{
+            fontSize: '13px',
+            color: '#6c757d',
+            marginBottom: '12px',
+          }}>
+            Drag and drop files to change the merge order
+          </div>
+
+          <DragDropReorder
+            items={config.pageOrder.map(({ fileId, fileName }) => ({
+              id: fileId,
+              name: fileName,
+            }))}
+            onReorder={handleReorder}
+            renderItem={(item, index) => (
               <div style={{
-                width: '60px',
-                height: '80px',
-                margin: '0 auto 12px',
-                backgroundColor: '#f44336',
-                borderRadius: '4px',
+                padding: '12px 16px',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '8px',
+                border: '1px solid #e9ecef',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                color: '#fff',
-                fontSize: '32px',
-                fontWeight: '700',
+                gap: '12px',
+                cursor: 'move',
               }}>
-                PDF
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '4px',
+                  backgroundColor: '#d5232b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  flexShrink: 0,
+                }}>
+                  {index + 1}
+                </div>
+                <div style={{
+                  flex: 1,
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: '#212529',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {item.name}
+                  </div>
+                </div>
+                <div style={{
+                  fontSize: '18px',
+                  color: '#adb5bd',
+                  cursor: 'move',
+                }}>
+                  ⋮⋮
+                </div>
               </div>
-              <div style={{
-                fontSize: '13px',
-                fontWeight: '600',
-                color: '#333',
-                marginBottom: '4px',
-              }}>
-                File {index + 1}
-              </div>
-              <div style={{
-                fontSize: '11px',
-                color: '#666',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}>
-                {item.name}
-              </div>
-            </div>
-          )}
-        />
-      </div>
-
-      {/* Info Box */}
-      <div style={{
-        padding: '16px',
-        backgroundColor: '#e3f2fd',
-        borderLeft: '4px solid #2196F3',
-        borderRadius: '4px',
-        marginBottom: '32px',
-      }}>
-        <div style={{ fontSize: '14px', color: '#1565C0', fontWeight: '600', marginBottom: '4px' }}>
-          ℹ️ Merge Options
+            )}
+          />
         </div>
-        <div style={{ fontSize: '13px', color: '#1976D2' }}>
-          All pages from each PDF will be included in the order shown above. The merged PDF will maintain the original quality and formatting.
-        </div>
-      </div>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+        {/* Info Box */}
+        <div style={{
+          padding: '16px',
+          backgroundColor: '#e7f3ff',
+          borderLeft: '4px solid #2196F3',
+          borderRadius: '6px',
+          marginBottom: '28px',
+        }}>
+          <div style={{
+            fontSize: '13px',
+            color: '#1565C0',
+            lineHeight: '1.5',
+          }}>
+            All pages from each PDF will be included in the order shown above. The merged PDF will maintain the original quality and formatting.
+          </div>
+        </div>
+
+        {/* Spacer to push button to bottom */}
+        <div style={{ flex: 1 }} />
+
+        {/* Merge Button */}
         <button
-          style={{ padding: '14px 32px', borderRadius: '8px', border: 'none', backgroundColor: '#e0e0e0', color: '#666', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-        <button
-          style={{ padding: '14px 32px', borderRadius: '8px', border: 'none', backgroundColor: '#4CAF50', color: '#fff', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}
           onClick={() => onMerge(config)}
+          style={{
+            width: '100%',
+            padding: '16px',
+            backgroundColor: '#d5232b',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            transition: 'background-color 0.2s',
+            marginTop: 'auto',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#b81f26';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#d5232b';
+          }}
         >
-          Merge PDFs →
+          Merge PDFs
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ marginLeft: '4px' }}>
+            <circle cx="10" cy="10" r="9" stroke="white" strokeWidth="2" fill="none"/>
+            <path d="M8 10L12 10M12 10L10 8M12 10L10 12" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </button>
       </div>
     </div>

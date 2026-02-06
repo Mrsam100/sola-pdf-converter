@@ -19,6 +19,7 @@ import UnlockPDF from './UnlockPDF';
 import EditPDF from './EditPDF';
 import RemoveBackground from './RemoveBackground';
 import ImageConverter from './ImageConverter';
+import OCRToText from './OCRToText';
 
 interface ToolDetailProps {
   tool: Tool;
@@ -59,6 +60,11 @@ const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
   }
   if (tool.id === 'edit-pdf') {
     return <EditPDF tool={tool} onBack={onBack} />;
+  }
+
+  // Route to OCR tool (client-side, no API key needed)
+  if (tool.id === 'ocr-text') {
+    return <OCRToText tool={tool} onBack={onBack} />;
   }
 
   // Route to image processing components

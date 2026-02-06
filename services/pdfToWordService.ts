@@ -23,12 +23,40 @@ export const extractTextFromPDF = async (file: File): Promise<{ text: string; pa
         const page = await pdf.getPage(pageNum);
         const textContent = await page.getTextContent();
 
-        // Extract text items
-        const pageText = textContent.items
-            .map((item: any) => item.str)
-            .join(' ');
+        // Extract text items preserving line structure using pdf.js position data
+        const items = textContent.items as any[];
+        let pageText = '';
+        let lastY: number | null = null;
 
-        fullText += `\n\n--- Page ${pageNum} ---\n\n${pageText}`;
+        for (const item of items) {
+            if (!item.str && !item.hasEOL) continue;
+
+            const currentY = item.transform ? item.transform[5] : null;
+
+            // Detect line/paragraph breaks via vertical position change
+            if (lastY !== null && currentY !== null && item.str) {
+                const yDiff = Math.abs(lastY - currentY);
+                if (yDiff > 2) {
+                    // New line detected
+                    pageText += '\n';
+                } else if (pageText.length > 0 && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
+                    pageText += ' ';
+                }
+            } else if (pageText.length > 0 && item.str && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
+                pageText += ' ';
+            }
+
+            pageText += item.str || '';
+            if (currentY !== null && item.str?.trim()) lastY = currentY;
+
+            // pdf.js marks end-of-line items
+            if (item.hasEOL) {
+                pageText += '\n';
+                lastY = null;
+            }
+        }
+
+        fullText += `\n\n--- Page ${pageNum} ---\n\n${pageText.trim()}`;
     }
 
     return {
@@ -141,8 +169,8 @@ export const textToWord = async (
     text: string,
     filename: string = 'converted-document.docx'
 ): Promise<Blob> => {
-    // Split text into pages
-    const pages = text.split(/\n\n--- Page \d+ ---\n\n/);
+    // Split text into pages — handle both leading \n\n and trimmed first page
+    const pages = text.split(/\n*--- Page \d+ ---\n\n/);
 
     // Remove first empty element if present
     if (pages[0].trim() === '') {
@@ -154,7 +182,7 @@ export const textToWord = async (
     // Add title
     paragraphs.push(
         new Paragraph({
-            text: filename.replace('.pdf', ''),
+            text: filename.replace(/\.pdf$/i, ''),
             heading: HeadingLevel.HEADING_1,
             spacing: { after: 200 },
         })
@@ -259,5 +287,5 @@ export const downloadWord = (blob: Blob, filename: string): void => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 100);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
 };

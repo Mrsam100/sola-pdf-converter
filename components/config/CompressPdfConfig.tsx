@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Compress PDF Configuration Dashboard
- * Production-ready compression settings
+ * Professional-grade configuration UI matching ilovepdf.com quality
+ * Ready for millions of users
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { CompressPdfConfig, CompressionLevel } from '../../types';
 import { DEFAULT_COMPRESS_PDF_CONFIG } from '../../types';
 import { configService } from '../../services/configService';
+import { PagePreview } from './PagePreview';
 
 interface CompressPdfConfigProps {
   file: File;
@@ -35,102 +37,328 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
     configService.saveConfig('compress-pdf', newConfig);
   };
 
-  const compressionLevels: { value: CompressionLevel; label: string; description: string; reduction: string }[] = [
-    { value: 'low', label: 'Low', description: 'Best quality', reduction: '~20% smaller' },
-    { value: 'medium', label: 'Medium', description: 'Recommended', reduction: '~40% smaller' },
-    { value: 'high', label: 'High', description: 'Good compression', reduction: '~60% smaller' },
-    { value: 'extreme', label: 'Extreme', description: 'Maximum compression', reduction: '~80% smaller' },
+  const compressionLevels: { value: CompressionLevel; label: string; description: string }[] = [
+    { value: 'low', label: 'Low compression', description: 'Best quality, ~20% smaller' },
+    { value: 'medium', label: 'Medium compression', description: 'Recommended, ~40% smaller' },
+    { value: 'high', label: 'High compression', description: 'Good balance, ~60% smaller' },
+    { value: 'extreme', label: 'Extreme compression', description: 'Maximum size reduction, ~80% smaller' },
   ];
 
   const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
 
-  return (
-    <div style={{ maxWidth: '700px', margin: '0 auto', padding: '24px', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-      <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-        <h2 style={{ fontSize: '28px', fontWeight: '700', color: '#333', marginBottom: '8px' }}>
-          Compress PDF
-        </h2>
-        <p style={{ fontSize: '14px', color: '#666' }}>
-          Current size: {fileSizeMB} MB
-        </p>
-      </div>
+  // Calculate estimated compressed size in real-time
+  const estimatedSize = useMemo(() => {
+    const originalSize = file.size / (1024 * 1024);
+    const reductions: Record<CompressionLevel, number> = {
+      low: 0.8,
+      medium: 0.6,
+      high: 0.4,
+      extreme: 0.2,
+    };
+    return (originalSize * reductions[config.compressionLevel]).toFixed(2);
+  }, [file.size, config.compressionLevel]);
 
-      {/* Compression Level */}
-      <div style={{ marginBottom: '24px' }}>
-        <div style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>
-          🗜️ Compression Level
-        </div>
-        <div style={{ display: 'grid', gap: '12px' }}>
-          {compressionLevels.map(({ value, label, description, reduction }) => (
-            <button
-              key={value}
-              style={{
-                padding: '16px',
-                border: config.compressionLevel === value ? '2px solid #4CAF50' : '2px solid #e0e0e0',
-                borderRadius: '8px',
-                backgroundColor: config.compressionLevel === value ? '#f1f8f4' : '#fff',
-                textAlign: 'left',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-              onClick={() => updateConfig({ compressionLevel: value })}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: '600', color: '#333', marginBottom: '4px' }}>{label}</div>
-                  <div style={{ fontSize: '13px', color: '#666' }}>{description}</div>
+  const reductionPercentage = useMemo(() => {
+    return ((1 - parseFloat(estimatedSize) / (file.size / (1024 * 1024))) * 100).toFixed(0);
+  }, [estimatedSize, file.size]);
+
+  // Dynamic preview opacity based on compression level
+  const previewStyle = useMemo((): React.CSSProperties => ({
+    opacity: config.compressionLevel === 'extreme' ? 0.7 :
+             config.compressionLevel === 'high' ? 0.85 :
+             config.compressionLevel === 'medium' ? 0.95 : 1,
+    transition: 'opacity 0.3s ease',
+  }), [config.compressionLevel]);
+
+  const containerStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: '60% 40%',
+    minHeight: '100vh',
+    backgroundColor: '#f8f9fa',
+  };
+
+  const previewSectionStyle: React.CSSProperties = {
+    backgroundColor: '#fff',
+    padding: '40px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const configSectionStyle: React.CSSProperties = {
+    backgroundColor: '#fff',
+    padding: '40px 32px',
+    borderLeft: '1px solid #e9ecef',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
+  const sectionStyle: React.CSSProperties = {
+    marginBottom: '28px',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#212529',
+    marginBottom: '12px',
+    display: 'block',
+  };
+
+  const compressionButtonStyle = (isActive: boolean): React.CSSProperties => ({
+    padding: '16px',
+    border: isActive ? '2px solid #d5232b' : '2px solid #dee2e6',
+    borderRadius: '8px',
+    backgroundColor: isActive ? '#fff5f5' : '#fff',
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    textAlign: 'left',
+    outline: 'none',
+    marginBottom: '12px',
+  });
+
+  return (
+    <div style={containerStyle}>
+      {/* LEFT: Preview Section */}
+      <div style={previewSectionStyle}>
+        <div style={{
+          maxWidth: '450px',
+          width: '100%',
+        }}>
+          {/* File info with prominent size display */}
+          <div style={{
+            marginBottom: '24px',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              fontSize: '13px',
+              color: '#6c757d',
+              marginBottom: '12px',
+            }}>
+              {file.name}
+            </div>
+            <div style={{
+              fontSize: '24px',
+              fontWeight: '700',
+              color: '#212529',
+              marginBottom: '4px',
+            }}>
+              {fileSizeMB} MB
+            </div>
+            <div style={{
+              fontSize: '12px',
+              color: '#6c757d',
+            }}>
+              Current file size
+            </div>
+          </div>
+
+          {/* Preview with compression quality indicator */}
+          <div style={{
+            padding: '24px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            textAlign: 'center',
+          }}>
+            <div style={previewStyle}>
+              <PagePreview file={file} pageNumber={1} width={400} height={500} />
+            </div>
+          </div>
+
+          {/* Live size comparison */}
+          <div style={{
+            marginTop: '20px',
+            padding: '20px',
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            border: '1px solid #e9ecef',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '16px',
+            }}>
+              <div>
+                <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>
+                  Original Size
                 </div>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: '#4CAF50' }}>
-                  {reduction}
+                <div style={{ fontSize: '18px', fontWeight: '600', color: '#495057' }}>
+                  {fileSizeMB} MB
                 </div>
               </div>
-            </button>
-          ))}
+              <div style={{
+                fontSize: '24px',
+                color: '#d5232b',
+                fontWeight: '700',
+              }}>
+                →
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>
+                  Estimated Size
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '700', color: '#d5232b' }}>
+                  {estimatedSize} MB
+                </div>
+              </div>
+            </div>
+            <div style={{
+              padding: '12px',
+              backgroundColor: '#d4edda',
+              borderRadius: '6px',
+              border: '1px solid #c3e6cb',
+              textAlign: 'center',
+            }}>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: '700',
+                color: '#155724',
+              }}>
+                {reductionPercentage}% size reduction
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Options */}
-      <div style={{ marginBottom: '32px', padding: '16px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={config.optimizeImages}
-            onChange={(e) => updateConfig({ optimizeImages: e.target.checked })}
-            style={{ width: '18px', height: '18px' }}
-          />
-          <div>
-            <div style={{ fontWeight: '600', fontSize: '14px' }}>Optimize images</div>
-            <div style={{ fontSize: '12px', color: '#666' }}>Compress embedded images for smaller file size</div>
-          </div>
-        </label>
+      {/* RIGHT: Configuration Section */}
+      <div style={configSectionStyle}>
+        {/* Header */}
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#212529', marginBottom: '32px' }}>
+          Compress PDF options
+        </h2>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={config.removeMetadata}
-            onChange={(e) => updateConfig({ removeMetadata: e.target.checked })}
-            style={{ width: '18px', height: '18px' }}
-          />
+        {/* Compression Level */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Compression level</label>
           <div>
-            <div style={{ fontWeight: '600', fontSize: '14px' }}>Remove metadata</div>
-            <div style={{ fontSize: '12px', color: '#666' }}>Remove author info, creation date, etc.</div>
+            {compressionLevels.map(({ value, label, description }) => (
+              <button
+                key={value}
+                style={compressionButtonStyle(config.compressionLevel === value)}
+                onClick={() => updateConfig({ compressionLevel: value })}
+              >
+                <div style={{
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  color: config.compressionLevel === value ? '#d5232b' : '#212529',
+                  marginBottom: '4px',
+                }}>
+                  {label}
+                </div>
+                <div style={{
+                  fontSize: '13px',
+                  color: '#6c757d',
+                }}>
+                  {description}
+                </div>
+              </button>
+            ))}
           </div>
-        </label>
-      </div>
+        </div>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+        {/* Additional Options */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Additional options</label>
+          <div style={{
+            padding: '16px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+          }}>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              marginBottom: '12px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={config.optimizeImages}
+                onChange={(e) => updateConfig({ optimizeImages: e.target.checked })}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  accentColor: '#d5232b',
+                  cursor: 'pointer',
+                }}
+              />
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#212529' }}>
+                  Optimize images
+                </div>
+                <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                  Compress embedded images for smaller file size
+                </div>
+              </div>
+            </label>
+
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={config.removeMetadata}
+                onChange={(e) => updateConfig({ removeMetadata: e.target.checked })}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  accentColor: '#d5232b',
+                  cursor: 'pointer',
+                }}
+              />
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#212529' }}>
+                  Remove metadata
+                </div>
+                <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                  Remove author info, creation date, etc.
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* Spacer to push button to bottom */}
+        <div style={{ flex: 1 }} />
+
+        {/* Compress Button */}
         <button
-          style={{ padding: '14px 32px', borderRadius: '8px', border: 'none', backgroundColor: '#e0e0e0', color: '#666', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-        <button
-          style={{ padding: '14px 32px', borderRadius: '8px', border: 'none', backgroundColor: '#4CAF50', color: '#fff', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}
           onClick={() => onCompress(config)}
+          style={{
+            width: '100%',
+            padding: '16px',
+            backgroundColor: '#d5232b',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            transition: 'background-color 0.2s',
+            marginTop: 'auto',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#b81f26';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#d5232b';
+          }}
         >
-          Compress PDF →
+          Compress PDF
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ marginLeft: '4px' }}>
+            <circle cx="10" cy="10" r="9" stroke="white" strokeWidth="2" fill="none"/>
+            <path d="M8 10L12 10M12 10L10 8M12 10L10 12" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </button>
       </div>
     </div>

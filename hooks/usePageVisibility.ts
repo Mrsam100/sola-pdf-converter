@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 /**
  * Hook to track page visibility state
@@ -12,24 +12,25 @@ import { useState, useEffect } from 'react';
 export const usePageVisibility = () => {
     const [isVisible, setIsVisible] = useState(!document.hidden);
 
+    // Stable function references for proper cleanup
+    const handleVisible = useCallback(() => setIsVisible(true), []);
+    const handleHidden = useCallback(() => setIsVisible(false), []);
+
     useEffect(() => {
         const handleVisibilityChange = () => {
             setIsVisible(!document.hidden);
         };
 
-        // Listen for visibility changes
         document.addEventListener('visibilitychange', handleVisibilityChange);
-
-        // Also listen for focus/blur as backup
-        window.addEventListener('focus', () => setIsVisible(true));
-        window.addEventListener('blur', () => setIsVisible(false));
+        window.addEventListener('focus', handleVisible);
+        window.addEventListener('blur', handleHidden);
 
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('focus', () => setIsVisible(true));
-            window.removeEventListener('blur', () => setIsVisible(false));
+            window.removeEventListener('focus', handleVisible);
+            window.removeEventListener('blur', handleHidden);
         };
-    }, []);
+    }, [handleVisible, handleHidden]);
 
     return isVisible;
 };
@@ -46,7 +47,6 @@ export const useWakeLock = (active: boolean) => {
             try {
                 if ('wakeLock' in navigator && active) {
                     wakeLock = await (navigator as any).wakeLock.request('screen');
-                    console.log('Wake Lock acquired');
                 }
             } catch (err) {
                 console.warn('Wake Lock not supported or failed:', err);
@@ -58,7 +58,6 @@ export const useWakeLock = (active: boolean) => {
                 try {
                     await wakeLock.release();
                     wakeLock = null;
-                    console.log('Wake Lock released');
                 } catch (err) {
                     console.warn('Wake Lock release failed:', err);
                 }
@@ -71,13 +70,10 @@ export const useWakeLock = (active: boolean) => {
             releaseWakeLock();
         }
 
-        // Handle visibility change
+        // Re-acquire wake lock when page becomes visible (browsers release it on tab hide)
         const handleVisibilityChange = () => {
-            if (document.hidden && wakeLock !== null) {
-                // Re-acquire wake lock when page becomes visible again
-                releaseWakeLock().then(() => {
-                    if (active) requestWakeLock();
-                });
+            if (!document.hidden && active) {
+                requestWakeLock();
             }
         };
 

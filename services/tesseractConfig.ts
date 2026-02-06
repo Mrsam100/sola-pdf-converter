@@ -11,14 +11,11 @@ import { createWorker } from 'tesseract.js';
  */
 export const createConfiguredWorker = async (language: string = 'eng') => {
     try {
-        // Create worker with explicit CDN configuration
+        // Create worker - let tesseract.js v6 auto-resolve worker/core paths from the bundled package.
+        // Language data is fetched from the tessdata CDN (version-independent).
         const worker = await createWorker(language, 1, {
-            // Use official Tesseract.js CDN for worker and language files
-            workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
             langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-            corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
             logger: (info: any) => {
-                // Log progress for debugging
                 if (info.status === 'recognizing text') {
                     console.log(`OCR Progress: ${Math.round(info.progress * 100)}%`);
                 }
