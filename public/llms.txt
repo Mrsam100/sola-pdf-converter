@@ -1,0 +1,60 @@
+# Sola - Precision File Conversion Suite
+> Built by Gregorious Creative Studios. A premium, client-side file conversion platform with 20+ tools for PDF, image, audio, and text processing. All files are processed locally in the browser — nothing is uploaded to any server.
+
+## About
+Sola is a free, browser-based file conversion suite. It provides professional-grade tools for converting, editing, merging, splitting, compressing, and securing PDF documents, images, and audio files. Privacy-first: all processing happens client-side using WebAssembly and JavaScript — no files ever leave the user's device.
+
+## Tools
+
+### PDF Tools
+- PDF to Word: Convert PDF documents to editable Word (.docx) files
+- Word to PDF: Transform Word documents into stable PDF format
+- PDF to PowerPoint: Turn PDFs into editable presentation slides
+- PDF to Excel: Extract tables from PDF into spreadsheet format
+- Excel to PDF: Convert spreadsheets to PDF documents
+- PowerPoint to PDF: Convert presentations to PDF format
+- Merge PDF: Combine multiple PDF files into a single document
+- Split PDF: Extract specific pages or split PDF into multiple files
+- Compress PDF: Reduce PDF file size while maintaining quality
+- Rotate PDF: Permanently rotate PDF pages (90, 180, 270 degrees)
+- Edit PDF: Full-featured PDF editor with text detection, drawing, shapes, highlights, eraser, and image insertion
+- PDF to JPG: Convert PDF pages to high-quality JPG images
+
+### Security Tools
+- Unlock PDF: Remove password protection from PDF files
+- Encrypt PDF: Add password protection to PDF documents
+- Sign PDF: Add digital signatures to documents
+
+### Image Tools
+- Image to PDF: Convert images (JPG, PNG, WebP) to a single PDF
+- Remove Background: Automatically extract subjects from images
+- JPG to PNG: Convert JPG images to PNG format with transparency support
+- PNG to JPG: Convert PNG images to compressed JPG format
+- HEIC to JPG: Convert iPhone HEIC photos to standard JPG format
+
+### Text & Audio Tools
+- OCR to Text: Extract text from scanned documents using Tesseract.js OCR
+- Audio to Text: Transcribe audio recordings to text using Whisper AI
+
+## Technology
+- Frontend: React + TypeScript + Vite
+- PDF Processing: pdf-lib (editing), PDF.js (rendering)
+- OCR: Tesseract.js (client-side)
+- Audio Transcription: Whisper (via ONNX Runtime Web)
+- All processing: 100% client-side, no server uploads
+
+## Legal Pages
+- Privacy Policy: /privacy
+- Terms of Service: /terms
+- Contact Support: /contact
+- API Access: /api
+
+## Key Features
+- Free to use, no account required
+- 100% client-side processing (files never leave your browser)
+- 256-bit SSL encryption for all connections
+- No ads, no tracking, no data collection
+- Mobile-responsive design
+- Dark mode support
+- PWA installable
+- Works offline for most tools

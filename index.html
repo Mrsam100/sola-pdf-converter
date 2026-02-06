@@ -18,6 +18,22 @@
 
     <title>Sola - Precision Conversion</title>
     <meta name="description" content="Sola - Premium file conversion suite. Convert PDFs, images, audio files with AI-powered tools. Client-side processing for maximum privacy." />
+    <meta name="keywords" content="PDF converter, merge PDF, split PDF, compress PDF, edit PDF, image to PDF, OCR, audio transcription, file conversion, free online tools" />
+
+    <!-- Allow all crawlers and AI bots -->
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Sola - Precision File Conversion Suite" />
+    <meta property="og:description" content="Free, browser-based file conversion. 20+ tools for PDF, image, audio processing. 100% client-side — your files never leave your device." />
+    <meta property="og:site_name" content="Sola" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sola - Precision File Conversion Suite" />
+    <meta name="twitter:description" content="Free, browser-based file conversion. 20+ tools for PDF, image, audio processing. 100% client-side — your files never leave your device." />
 
     <!-- Security Headers -->
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
@@ -49,6 +65,41 @@
     <div id="offline-indicator" class="offline-indicator" style="display: none;">
       📵 You're offline. Some features may not work.
     </div>
+
+    <!-- Structured Data for LLMs and Search Engines -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Sola",
+      "description": "Free, browser-based file conversion suite with 20+ tools for PDF, image, audio, and text processing. 100% client-side processing.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Any",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "creator": { "@type": "Organization", "name": "Gregorious Creative Studios" },
+      "featureList": [
+        "PDF to Word conversion",
+        "Word to PDF conversion",
+        "Merge PDF files",
+        "Split PDF pages",
+        "Compress PDF",
+        "Edit PDF with text, shapes, drawing",
+        "Rotate PDF pages",
+        "PDF to JPG conversion",
+        "Image to PDF conversion",
+        "JPG to PNG conversion",
+        "PNG to JPG conversion",
+        "HEIC to JPG conversion",
+        "Remove image background",
+        "OCR text extraction",
+        "Audio to text transcription",
+        "Encrypt PDF with password",
+        "Unlock PDF password",
+        "Digital PDF signatures"
+      ],
+      "browserRequirements": "Requires a modern browser with JavaScript and WebAssembly support"
+    }
+    </script>
 
     <script type="module" src="/index.tsx"></script>
 
