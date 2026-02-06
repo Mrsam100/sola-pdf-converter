@@ -304,14 +304,7 @@
   }
 }
 
-/* Dark mode support for mobile */
-@media (prefers-color-scheme: dark) and (max-width: 768px) {
-  /* Reduce eye strain on mobile in dark mode */
-  body {
-    background-color: #1a1a1a;
-    color: #f0f0f0;
-  }
-}
+/* Dark mode now handled by [data-theme="dark"] in index.css */
 
 /* Reduce motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {

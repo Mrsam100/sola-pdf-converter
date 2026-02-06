@@ -8,12 +8,21 @@ import { Tool, ProcessState } from '../types';
 import { extractTextWithOCR } from '../services/pdfToWordService';
 import { createConfiguredWorker } from '../services/tesseractConfig';
 import { useWakeLock } from '../hooks/usePageVisibility';
+import { toast } from '../hooks/useToast';
+import { formatFileSize } from '../utils/formatFileSize';
 import BackButton from './BackButton';
+import StepProgress from './StepProgress';
 
 interface OCRToTextProps {
     tool: Tool;
     onBack: () => void;
 }
+
+const STEPS = [
+    { label: 'Upload' },
+    { label: 'OCR' },
+    { label: 'Complete' },
+];
 
 const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
@@ -23,10 +32,15 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
     const [resultText, setResultText] = useState<string>('');
     const [errorMsg, setErrorMsg] = useState<string>('');
     const [isDragging, setIsDragging] = useState(false);
+    const [copied, setCopied] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const isProcessing = state === ProcessState.CONVERTING;
     useWakeLock(isProcessing);
+
+    const currentStep = state === ProcessState.IDLE || state === ProcessState.UPLOADING
+        ? (file ? 0 : -1)
+        : state === ProcessState.CONVERTING ? 1 : 2;
 
     const validateAndSetFile = useCallback((selectedFile: File) => {
         const isPDF = selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
@@ -49,6 +63,7 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
         setErrorMsg('');
         setProgress(0);
         setProgressStatus('');
+        setCopied(false);
     }, []);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,7 +93,6 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
         }
     }, [validateAndSetFile]);
 
-    /** OCR an image file directly using Tesseract */
     const ocrImage = async (imageFile: File, onProgress?: (p: number, s: string) => void): Promise<string> => {
         let worker: any = null;
         try {
@@ -131,18 +145,20 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
                 setResultText(text);
             }
             setState(ProcessState.COMPLETED);
+            toast.success('Text extracted successfully!');
         } catch (err) {
             console.error('OCR error:', err);
             let errorMessage = 'An unknown error occurred';
             if (err instanceof Error) {
                 errorMessage = err.message;
                 if (err.message.includes('OCR engine')) {
-                    errorMessage = 'Failed to initialize OCR. Please check your internet connection — OCR needs to download language files on first use.';
+                    errorMessage = 'Failed to initialize OCR. Please check your internet connection.';
                 } else if (err.message.includes('OCR failed')) {
                     errorMessage = err.message + ' The document may be corrupted or have unusual formatting.';
                 }
             }
             setErrorMsg(errorMessage);
+            toast.error('OCR extraction failed');
             setState(ProcessState.IDLE);
             setProgress(0);
             setProgressStatus('');
@@ -161,6 +177,7 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
         link.click();
         document.body.removeChild(link);
         setTimeout(() => URL.revokeObjectURL(url), 5000);
+        toast.success('Download started!');
     };
 
     const handleCopy = async () => {
@@ -168,7 +185,6 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
         try {
             await navigator.clipboard.writeText(resultText);
         } catch {
-            // Fallback
             const textarea = document.createElement('textarea');
             textarea.value = resultText;
             document.body.appendChild(textarea);
@@ -176,6 +192,9 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
             document.execCommand('copy');
             document.body.removeChild(textarea);
         }
+        setCopied(true);
+        toast.success('Copied to clipboard!');
+        setTimeout(() => setCopied(false), 2000);
     };
 
     const handleReset = () => {
@@ -185,6 +204,7 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
         setProgressStatus('');
         setResultText('');
         setErrorMsg('');
+        setCopied(false);
     };
 
     return (
@@ -203,16 +223,45 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
                         <p className="workspace-desc">{tool.description}</p>
                     </div>
 
+                    {/* Step Progress */}
+                    <div style={{ padding: '1.5rem 1.5rem 0' }}>
+                        <StepProgress steps={STEPS} currentStep={currentStep} />
+                    </div>
+
                     <div className="workspace-body">
                         {errorMsg && (
-                            <div className="error-msg">{errorMsg}</div>
+                            <div className="error-msg">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="icon-sm" style={{ flexShrink: 0 }}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                </svg>
+                                <div style={{ flex: 1, textAlign: 'left' }}>
+                                    {errorMsg}
+                                    <button
+                                        onClick={handleConvert}
+                                        style={{
+                                            display: 'block',
+                                            marginTop: '0.5rem',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 600,
+                                            color: 'var(--accent)',
+                                            textDecoration: 'underline',
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: 0,
+                                        }}
+                                    >
+                                        Try Again
+                                    </button>
+                                </div>
+                            </div>
                         )}
 
                         {state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
                             <>
                                 {file ? (
                                     <div>
-                                        <div style={{ padding: '1.5rem', background: 'var(--surface-light)', borderRadius: '0.5rem', marginBottom: '2rem' }}>
+                                        <div style={{ padding: '1.5rem', background: 'var(--surface-light)', borderRadius: 'var(--radius-md)', marginBottom: '2rem' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-lg" style={{ color: 'var(--text-primary)' }}>
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -221,21 +270,27 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
                                                     <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
                                                         {file.name}
                                                     </div>
-                                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>
-                                                        Ready for OCR text extraction
+                                                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                                                        <span className="file-size">{formatFileSize(file.size)}</span>
+                                                        <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>Ready for OCR</span>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <div style={{ padding: '1rem', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '0.5rem' }}>
-                                                <div style={{ fontSize: '0.875rem', color: '#92400E', lineHeight: 1.6 }}>
+                                            <div style={{
+                                                padding: '1rem',
+                                                background: 'var(--warning-bg)',
+                                                border: '1px solid color-mix(in srgb, var(--warning) 40%, transparent)',
+                                                borderRadius: 'var(--radius-sm)',
+                                            }}>
+                                                <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
                                                     <strong>OCR Mode:</strong> Uses optical character recognition to extract text from:
                                                     <ul style={{ margin: '0.5rem 0 0 1.5rem', paddingLeft: 0 }}>
                                                         <li>Scanned PDFs and photos of documents</li>
                                                         <li>Images with text (JPG, PNG, etc.)</li>
                                                         <li>PDFs with non-selectable text</li>
                                                     </ul>
-                                                    <div style={{ marginTop: '0.5rem', fontSize: '0.75rem' }}>
+                                                    <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
                                                         Processing time depends on page count and image quality
                                                     </div>
                                                 </div>
@@ -243,7 +298,7 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
                                         </div>
 
                                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <button onClick={handleConvert} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
+                                            <button onClick={handleConvert} className="btn-action" style={{ flex: 1, maxWidth: 'none', marginTop: 0 }}>
                                                 Extract Text (OCR)
                                             </button>
                                             <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>
@@ -253,7 +308,7 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
                                     </div>
                                 ) : (
                                     <div
-                                        className={`upload-zone${isDragging ? ' active' : ''}`}
+                                        className={`upload-zone${isDragging ? ' drag-over' : ''}`}
                                         onClick={() => fileInputRef.current?.click()}
                                         onDragOver={handleDragOver}
                                         onDragEnter={handleDragOver}
@@ -272,20 +327,20 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                                             </svg>
                                         </div>
-                                        <span style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: '0.5rem', color: '#2C2A26' }}>
-                                            Select a PDF or image for OCR
+                                        <span style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                                            {isDragging ? 'Drop your file here' : 'Select a PDF or image for OCR'}
                                         </span>
-                                        <span style={{ color: '#A8A29E', fontSize: '0.875rem' }}>
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>
                                             Click to browse or drag and drop
                                         </span>
                                     </div>
                                 )}
                             </>
                         ) : state === ProcessState.CONVERTING ? (
-                            <div className="result-area" style={{ padding: '3rem 0' }}>
+                            <div className="result-area" style={{ padding: '3rem 0' }} aria-live="polite">
                                 <div style={{ maxWidth: '300px', margin: '0 auto 2rem' }}>
                                     <div className="loader">
-                                        <div className="loader-bar" style={{ width: `${progress}%` }}></div>
+                                        <div className="loader-bar" style={{ width: `${progress}%`, animation: progress > 0 ? 'none' : undefined }}></div>
                                     </div>
                                     <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                                         {Math.round(progress)}%
@@ -301,8 +356,8 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
                             </div>
                         ) : (
                             <div className="result-area animate-fade-in">
-                                <div className="success-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="icon-lg">
+                                <div className="success-check-animated">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="#fff" width="28" height="28">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                                     </svg>
                                 </div>
@@ -323,21 +378,22 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
                                                 padding: '1rem',
                                                 fontFamily: 'monospace',
                                                 fontSize: '0.875rem',
-                                                border: '1px solid var(--border-color, #e5e5e5)',
-                                                borderRadius: '0.5rem',
+                                                border: '1px solid var(--border-color)',
+                                                borderRadius: 'var(--radius-sm)',
                                                 resize: 'vertical',
-                                                background: 'var(--surface-light, #fafafa)',
+                                                background: 'var(--surface-light)',
+                                                color: 'var(--text-primary)',
                                             }}
                                         />
                                     </div>
                                 )}
 
                                 <div className="action-row">
-                                    <button onClick={handleDownload} className="btn-action">
+                                    <button onClick={handleDownload} className="btn-secondary btn-primary-alt">
                                         Download as TXT
                                     </button>
                                     <button onClick={handleCopy} className="btn-secondary">
-                                        Copy to Clipboard
+                                        {copied ? 'Copied!' : 'Copy to Clipboard'}
                                     </button>
                                     <button onClick={handleReset} className="btn-secondary">
                                         OCR Another File

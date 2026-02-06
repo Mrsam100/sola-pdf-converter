@@ -7,7 +7,10 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Tool, ProcessState } from '../types';
 import { pdfToWord, pdfToWordWithOCR, downloadWord } from '../services/pdfToWordService';
 import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
+import { toast } from '../hooks/useToast';
+import { formatFileSize } from '../utils/formatFileSize';
 import BackButton from './BackButton';
+import StepProgress from './StepProgress';
 
 interface PDFToWordProps {
     tool: Tool;
@@ -15,6 +18,12 @@ interface PDFToWordProps {
 }
 
 type ConversionMode = 'non-ocr' | 'ocr';
+
+const STEPS = [
+    { label: 'Upload' },
+    { label: 'Processing' },
+    { label: 'Complete' },
+];
 
 const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
@@ -24,6 +33,7 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
     const [progressStatus, setProgressStatus] = useState<string>('');
     const [errorMsg, setErrorMsg] = useState<string>('');
     const [isDragging, setIsDragging] = useState(false);
+    const [resultBlob, setResultBlob] = useState<Blob | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Prevent tab suspension during processing
@@ -31,12 +41,15 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
     useWakeLock(isProcessing);
     const isPageVisible = usePageVisibility();
 
-    // Notify user if they switched tabs during processing
     useEffect(() => {
         if (isProcessing && !isPageVisible) {
             console.log('Processing continues in background...');
         }
     }, [isProcessing, isPageVisible]);
+
+    const currentStep = state === ProcessState.IDLE || state === ProcessState.UPLOADING
+        ? (file ? 0 : -1)
+        : state === ProcessState.CONVERTING ? 1 : 2;
 
     const validateAndSetFile = useCallback((selectedFile: File) => {
         if (selectedFile.type !== 'application/pdf' && !selectedFile.name.toLowerCase().endsWith('.pdf')) {
@@ -44,7 +57,7 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
             return;
         }
 
-        const maxSize = 50 * 1024 * 1024; // 50MB
+        const maxSize = 50 * 1024 * 1024;
         if (selectedFile.size > maxSize) {
             setErrorMsg('File is too large. Maximum size is 50MB');
             return;
@@ -55,6 +68,7 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
         setErrorMsg('');
         setProgress(0);
         setProgressStatus('');
+        setResultBlob(null);
     }, []);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,29 +108,29 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
         setState(ProcessState.CONVERTING);
         setErrorMsg('');
         setProgress(0);
+        setResultBlob(null);
 
         try {
             let wordBlob: Blob;
 
             if (mode === 'ocr') {
-                // OCR mode
                 wordBlob = await pdfToWordWithOCR(file, (prog, status) => {
                     setProgress(prog);
                     setProgressStatus(status);
                 });
             } else {
-                // Non-OCR mode
                 wordBlob = await pdfToWord(file, (prog, status) => {
                     setProgress(prog);
                     setProgressStatus(status);
                 });
             }
 
+            setResultBlob(wordBlob);
             setState(ProcessState.COMPLETED);
 
-            // Auto-download (case-insensitive extension match)
             const filename = file.name.replace(/\.pdf$/i, '.docx');
             downloadWord(wordBlob, filename);
+            toast.success('Document converted successfully!');
         } catch (err) {
             console.error('PDF to Word conversion error:', err);
 
@@ -124,17 +138,16 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
             if (err instanceof Error) {
                 errorMessage = err.message;
 
-                // Provide helpful error messages for common issues
                 if (err.message.includes('password') || err.message.includes('encrypted')) {
                     errorMessage = 'This PDF is password-protected. Please unlock it first using the Unlock PDF tool.';
                 } else if (err.message.includes('Invalid PDF')) {
                     errorMessage = 'The file appears to be corrupted or is not a valid PDF.';
                 } else if (err.message.includes('network') || err.message.includes('fetch') || err.message.includes('connection')) {
-                    errorMessage = 'Network error. Please check your internet connection and try again. OCR requires downloading language files.';
+                    errorMessage = 'Network error. Please check your internet connection and try again.';
                 } else if (err.message.includes('OCR engine')) {
-                    errorMessage = 'Failed to initialize OCR. Please check your internet connection - OCR needs to download language files on first use.';
+                    errorMessage = 'Failed to initialize OCR. Please check your internet connection.';
                 } else if (err.message.includes('OCR failed')) {
-                    errorMessage = err.message + ' This may happen if the PDF is corrupted or has unusual formatting.';
+                    errorMessage = err.message + ' The document may be corrupted or have unusual formatting.';
                 } else if (err.message.includes('render')) {
                     errorMessage = 'Failed to render PDF pages. The PDF may be corrupted or in an unsupported format.';
                 } else if (err.message.includes('canvas')) {
@@ -143,10 +156,18 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
             }
 
             setErrorMsg(errorMessage);
+            toast.error('Conversion failed');
             setState(ProcessState.IDLE);
             setProgress(0);
             setProgressStatus('');
         }
+    };
+
+    const handleDownloadAgain = () => {
+        if (!resultBlob || !file) return;
+        const filename = file.name.replace(/\.pdf$/i, '.docx');
+        downloadWord(resultBlob, filename);
+        toast.success('Download started!');
     };
 
     const handleReset = () => {
@@ -156,17 +177,15 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
         setProgress(0);
         setProgressStatus('');
         setErrorMsg('');
+        setResultBlob(null);
     };
 
     return (
         <div className="detail-view animate-fade-in">
             <div className="container">
-                {/* Navigation */}
                 <BackButton onBack={onBack} />
 
-                {/* Main Interface Card */}
                 <div className="workspace-card">
-                    {/* Header */}
                     <div className="workspace-header">
                         <div className="workspace-icon-large">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-lg">
@@ -177,18 +196,45 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                         <p className="workspace-desc">{tool.description}</p>
                     </div>
 
-                    {/* Functional Area */}
+                    {/* Step Progress */}
+                    <div style={{ padding: '1.5rem 1.5rem 0' }}>
+                        <StepProgress steps={STEPS} currentStep={currentStep} />
+                    </div>
+
                     <div className="workspace-body">
                         {errorMsg && (
-                            <div className="error-msg">{errorMsg}</div>
+                            <div className="error-msg">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="icon-sm" style={{ flexShrink: 0 }}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                </svg>
+                                <div style={{ flex: 1, textAlign: 'left' }}>
+                                    {errorMsg}
+                                    <button
+                                        onClick={handleConvert}
+                                        style={{
+                                            display: 'block',
+                                            marginTop: '0.5rem',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 600,
+                                            color: 'var(--accent)',
+                                            textDecoration: 'underline',
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: 0,
+                                        }}
+                                    >
+                                        Try Again
+                                    </button>
+                                </div>
+                            </div>
                         )}
 
                         {state === ProcessState.IDLE || state === ProcessState.UPLOADING ? (
                             <>
                                 {file ? (
                                     <div>
-                                        {/* File Info */}
-                                        <div style={{ padding: '1.5rem', background: 'var(--surface-light)', borderRadius: '0.5rem', marginBottom: '2rem' }}>
+                                        <div style={{ padding: '1.5rem', background: 'var(--surface-light)', borderRadius: 'var(--radius-md)', marginBottom: '2rem' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-lg" style={{ color: 'var(--text-primary)' }}>
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -197,8 +243,9 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                                     <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
                                                         {file.name}
                                                     </div>
-                                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>
-                                                        Ready to convert to Word
+                                                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                                                        <span className="file-size">{formatFileSize(file.size)}</span>
+                                                        <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>Ready to convert</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -216,7 +263,7 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                                     >
                                                         <div style={{ textAlign: 'left' }}>
                                                             <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Non-OCR</div>
-                                                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Fast • For digital PDFs with selectable text</div>
+                                                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Fast &bull; For digital PDFs with selectable text</div>
                                                         </div>
                                                     </button>
                                                     <button
@@ -226,15 +273,21 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                                     >
                                                         <div style={{ textAlign: 'left' }}>
                                                             <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>OCR</div>
-                                                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Slower • For scanned PDFs or images</div>
+                                                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Slower &bull; For scanned PDFs or images</div>
                                                         </div>
                                                     </button>
                                                 </div>
                                             </div>
 
-                                            {/* Mode Description */}
-                                            <div style={{ padding: '1rem', background: mode === 'ocr' ? '#FEF3C7' : '#EFF6FF', border: `1px solid ${mode === 'ocr' ? '#FCD34D' : '#BFDBFE'}`, borderRadius: '0.5rem', marginTop: '1rem' }}>
-                                                <div style={{ fontSize: '0.875rem', color: mode === 'ocr' ? '#92400E' : '#1E40AF', lineHeight: 1.6 }}>
+                                            {/* Mode Description — theme-aware */}
+                                            <div style={{
+                                                padding: '1rem',
+                                                background: mode === 'ocr' ? 'var(--warning-bg)' : 'var(--info-bg)',
+                                                border: `1px solid color-mix(in srgb, ${mode === 'ocr' ? 'var(--warning)' : 'var(--info)'} 40%, transparent)`,
+                                                borderRadius: 'var(--radius-sm)',
+                                                marginTop: '1rem',
+                                            }}>
+                                                <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
                                                     {mode === 'non-ocr' ? (
                                                         <>
                                                             <strong>Non-OCR Mode:</strong> Extracts existing text from your PDF. Best for:
@@ -252,8 +305,8 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                                                 <li>PDFs with non-selectable text</li>
                                                                 <li>Image-based PDFs</li>
                                                             </ul>
-                                                            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem' }}>
-                                                                ⚠️ Note: OCR is slower but works with any PDF type
+                                                            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                                                                Note: OCR is slower but works with any PDF type
                                                             </div>
                                                         </>
                                                     )}
@@ -261,9 +314,8 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                             </div>
                                         </div>
 
-                                        {/* Action Buttons */}
                                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <button onClick={handleConvert} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
+                                            <button onClick={handleConvert} className="btn-action" style={{ flex: 1, maxWidth: 'none', marginTop: 0 }}>
                                                 Convert to Word ({mode === 'ocr' ? 'OCR' : 'Non-OCR'})
                                             </button>
                                             <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>
@@ -273,7 +325,7 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                     </div>
                                 ) : (
                                     <div
-                                        className={`upload-zone${isDragging ? ' active' : ''}`}
+                                        className={`upload-zone${isDragging ? ' drag-over' : ''}`}
                                         onClick={() => fileInputRef.current?.click()}
                                         onDragOver={handleDragOver}
                                         onDragEnter={handleDragOver}
@@ -292,20 +344,20 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                                             </svg>
                                         </div>
-                                        <span style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: '0.5rem', color: '#2C2A26' }}>
-                                            Select a PDF to convert to Word
+                                        <span style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                                            {isDragging ? 'Drop your PDF here' : 'Select a PDF to convert to Word'}
                                         </span>
-                                        <span style={{ color: '#A8A29E', fontSize: '0.875rem' }}>
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>
                                             Click to browse or drag and drop
                                         </span>
                                     </div>
                                 )}
                             </>
                         ) : state === ProcessState.CONVERTING ? (
-                            <div className="result-area" style={{ padding: '3rem 0' }}>
+                            <div className="result-area" style={{ padding: '3rem 0' }} aria-live="polite">
                                 <div style={{ maxWidth: '300px', margin: '0 auto 2rem' }}>
                                     <div className="loader">
-                                        <div className="loader-bar" style={{ width: `${progress}%` }}></div>
+                                        <div className="loader-bar" style={{ width: `${progress}%`, animation: progress > 0 ? 'none' : undefined }}></div>
                                     </div>
                                     <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                                         {Math.round(progress)}%
@@ -323,18 +375,38 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                             </div>
                         ) : (
                             <div className="result-area animate-fade-in">
-                                <div className="success-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="icon-lg">
+                                <div className="success-check-animated">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="#fff" width="28" height="28">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                                     </svg>
                                 </div>
-                                <h3 className="workspace-title" style={{ fontSize: '1.5rem' }}>Success!</h3>
+                                <h3 className="workspace-title" style={{ fontSize: '1.5rem' }}>Conversion Complete!</h3>
+
+                                {file && resultBlob && (
+                                    <div style={{
+                                        padding: '1rem 1.5rem',
+                                        background: 'var(--success-bg)',
+                                        borderRadius: 'var(--radius-md)',
+                                        margin: '1.5rem auto',
+                                        maxWidth: '360px',
+                                        fontSize: '0.875rem',
+                                    }}>
+                                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+                                            {file.name.replace(/\.pdf$/i, '.docx')}
+                                        </div>
+                                        <div style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                                            {formatFileSize(resultBlob.size)} &bull; Word Document (.docx)
+                                        </div>
+                                    </div>
+                                )}
+
                                 <p className="workspace-desc" style={{ marginBottom: '2rem' }}>
-                                    Your PDF has been converted to Word (.docx) successfully.
-                                    <br />
-                                    Check your downloads folder.
+                                    Your file has been downloaded. Check your downloads folder.
                                 </p>
                                 <div className="action-row">
+                                    <button onClick={handleDownloadAgain} className="btn-secondary btn-primary-alt">
+                                        Download Again
+                                    </button>
                                     <button onClick={handleReset} className="btn-secondary">
                                         Convert Another PDF
                                     </button>
@@ -343,7 +415,6 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                         )}
                     </div>
 
-                    {/* Footer */}
                     <div className="workspace-footer">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-sm">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />

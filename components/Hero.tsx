@@ -12,16 +12,13 @@ interface HeroProps {
 const Hero: React.FC<HeroProps> = ({ onExplore }) => {
   return (
     <section className="hero">
-      
       {/* Background */}
       <div className="hero-bg"></div>
-      
-      {/* Texture Overlay */}
-      <img 
-        src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=2000" 
-        alt="Abstract Tech" 
-        className="hero-texture"
-      />
+
+      {/* Floating geometric shapes */}
+      <div className="hero-shape hero-shape-1"></div>
+      <div className="hero-shape hero-shape-2"></div>
+      <div className="hero-shape hero-shape-3"></div>
 
       {/* Content */}
       <div className="hero-content animate-fade-in">
@@ -29,14 +26,14 @@ const Hero: React.FC<HeroProps> = ({ onExplore }) => {
             Gregorious Creative Studios
           </span>
           <h1 className="hero-title">
-            Transform your <br/> <span>digital workflow.</span>
+            Transform your <br/> <span className="gradient-text">digital workflow.</span>
           </h1>
           <p className="hero-subtitle">
             The all-in-one converter suite. Seamlessly transform PDFs, Images, Text, and Audio with privacy-first precision.
           </p>
-          
+
           <div className="cta-group">
-            <button 
+            <button
                 onClick={onExplore}
                 className="btn-primary"
             >
@@ -45,6 +42,22 @@ const Hero: React.FC<HeroProps> = ({ onExplore }) => {
             <a href="#about" className="link-secondary">
                 Learn More
             </a>
+          </div>
+
+          {/* Trust badges */}
+          <div className="hero-stats">
+            <div className="hero-stat">
+              <span className="hero-stat-dot"></span>
+              15+ Tools
+            </div>
+            <div className="hero-stat">
+              <span className="hero-stat-dot"></span>
+              100% Private
+            </div>
+            <div className="hero-stat">
+              <span className="hero-stat-dot"></span>
+              No Sign-up
+            </div>
           </div>
       </div>
     </section>

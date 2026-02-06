@@ -70,11 +70,11 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
     display: 'grid',
     gridTemplateColumns: '60% 40%',
     minHeight: '100vh',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'var(--config-bg)',
   };
 
   const previewSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px',
     overflowY: 'auto',
     display: 'flex',
@@ -83,9 +83,9 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
   };
 
   const configSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px 32px',
-    borderLeft: '1px solid #e9ecef',
+    borderLeft: '1px solid var(--config-border)',
     display: 'flex',
     flexDirection: 'column',
   };
@@ -97,7 +97,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
   const labelStyle: React.CSSProperties = {
     fontSize: '14px',
     fontWeight: '600',
-    color: '#212529',
+    color: 'var(--text-primary)',
     marginBottom: '12px',
     display: 'block',
   };
@@ -118,14 +118,14 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
             <div style={{
               fontSize: '16px',
               fontWeight: '600',
-              color: '#212529',
+              color: 'var(--text-primary)',
               marginBottom: '8px',
             }}>
               Files to merge
             </div>
             <div style={{
               fontSize: '13px',
-              color: '#6c757d',
+              color: 'var(--text-tertiary)',
             }}>
               {files.length} PDF{files.length !== 1 ? 's' : ''} selected
             </div>
@@ -147,16 +147,16 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
                   <div style={{
                     fontSize: '12px',
                     fontWeight: '600',
-                    color: '#495057',
+                    color: 'var(--text-secondary)',
                     marginBottom: '8px',
                   }}>
                     Position {index + 1}
                   </div>
                   <div style={{
                     padding: '12px',
-                    backgroundColor: highlightedIndex === index ? '#fff5f5' : '#f8f9fa',
+                    backgroundColor: highlightedIndex === index ? 'var(--config-active-bg)' : 'var(--config-bg)',
                     borderRadius: '8px',
-                    border: highlightedIndex === index ? '2px solid #d5232b' : '1px solid #e9ecef',
+                    border: highlightedIndex === index ? '2px solid var(--config-active)' : '1px solid var(--config-border)',
                     transform: highlightedIndex === index ? 'scale(1.05)' : 'scale(1)',
                     transition: 'all 0.3s ease',
                     position: 'relative',
@@ -176,7 +176,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
                       width: '28px',
                       height: '28px',
                       borderRadius: '50%',
-                      backgroundColor: '#d5232b',
+                      backgroundColor: 'var(--config-active)',
                       color: '#fff',
                       display: 'flex',
                       alignItems: 'center',
@@ -190,7 +190,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
                   </div>
                   <div style={{
                     fontSize: '11px',
-                    color: '#6c757d',
+                    color: 'var(--text-tertiary)',
                     marginTop: '8px',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -208,14 +208,14 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
           <div style={{
             marginTop: '24px',
             padding: '16px',
-            backgroundColor: '#e7f3ff',
+            backgroundColor: 'var(--info-bg)',
             borderRadius: '8px',
-            border: '1px solid #90caf9',
+            border: '1px solid var(--info)',
             textAlign: 'center',
           }}>
             <div style={{
               fontSize: '13px',
-              color: '#1976d2',
+              color: 'var(--info)',
               marginBottom: '4px',
             }}>
               Combined file size
@@ -223,13 +223,13 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
             <div style={{
               fontSize: '20px',
               fontWeight: '700',
-              color: '#0d47a1',
+              color: 'var(--info)',
             }}>
               {totalSizeMB} MB
             </div>
             <div style={{
               fontSize: '12px',
-              color: '#1976d2',
+              color: 'var(--info)',
               marginTop: '4px',
             }}>
               {files.length} PDF{files.length !== 1 ? 's' : ''} will be merged
@@ -241,7 +241,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
       {/* RIGHT: Configuration Section */}
       <div style={configSectionStyle}>
         {/* Header */}
-        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#212529', marginBottom: '32px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '32px' }}>
           Merge PDFs options
         </h2>
 
@@ -250,7 +250,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
           <label style={labelStyle}>File order</label>
           <div style={{
             fontSize: '13px',
-            color: '#6c757d',
+            color: 'var(--text-tertiary)',
             marginBottom: '12px',
           }}>
             Drag and drop files to change the merge order
@@ -265,9 +265,9 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
             renderItem={(item, index) => (
               <div style={{
                 padding: '12px 16px',
-                backgroundColor: '#f8f9fa',
+                backgroundColor: 'var(--config-bg)',
                 borderRadius: '8px',
-                border: '1px solid #e9ecef',
+                border: '1px solid var(--config-border)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
@@ -277,7 +277,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
                   width: '32px',
                   height: '32px',
                   borderRadius: '4px',
-                  backgroundColor: '#d5232b',
+                  backgroundColor: 'var(--config-active)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -295,7 +295,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
                   <div style={{
                     fontSize: '13px',
                     fontWeight: '600',
-                    color: '#212529',
+                    color: 'var(--text-primary)',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
@@ -305,7 +305,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
                 </div>
                 <div style={{
                   fontSize: '18px',
-                  color: '#adb5bd',
+                  color: 'var(--text-tertiary)',
                   cursor: 'move',
                 }}>
                   ⋮⋮
@@ -318,14 +318,14 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
         {/* Info Box */}
         <div style={{
           padding: '16px',
-          backgroundColor: '#e7f3ff',
-          borderLeft: '4px solid #2196F3',
+          backgroundColor: 'var(--info-bg)',
+          borderLeft: '4px solid var(--info)',
           borderRadius: '6px',
           marginBottom: '28px',
         }}>
           <div style={{
             fontSize: '13px',
-            color: '#1565C0',
+            color: 'var(--info)',
             lineHeight: '1.5',
           }}>
             All pages from each PDF will be included in the order shown above. The merged PDF will maintain the original quality and formatting.
@@ -341,7 +341,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
           style={{
             width: '100%',
             padding: '16px',
-            backgroundColor: '#d5232b',
+            backgroundColor: 'var(--config-active)',
             color: '#fff',
             border: 'none',
             borderRadius: '8px',
@@ -356,10 +356,10 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
             marginTop: 'auto',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#b81f26';
+            e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#d5232b';
+            e.currentTarget.style.backgroundColor = 'var(--config-active)';
           }}
         >
           Merge PDFs

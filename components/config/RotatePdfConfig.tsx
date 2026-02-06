@@ -78,11 +78,11 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
     display: 'grid',
     gridTemplateColumns: '60% 40%',
     minHeight: '100vh',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'var(--config-bg)',
   };
 
   const previewSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px',
     display: 'flex',
     flexDirection: 'column',
@@ -91,9 +91,9 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
   };
 
   const configSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px 32px',
-    borderLeft: '1px solid #e9ecef',
+    borderLeft: '1px solid var(--config-border)',
     display: 'flex',
     flexDirection: 'column',
   };
@@ -105,21 +105,21 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
   const labelStyle: React.CSSProperties = {
     fontSize: '14px',
     fontWeight: '600',
-    color: '#212529',
+    color: 'var(--text-primary)',
     marginBottom: '12px',
     display: 'block',
   };
 
   const rotationButtonStyle = (isActive: boolean): React.CSSProperties => ({
     padding: '16px',
-    border: isActive ? '2px solid #d5232b' : '2px solid #dee2e6',
+    border: isActive ? '2px solid var(--config-active)' : '2px solid var(--config-border)',
     borderRadius: '8px',
-    backgroundColor: isActive ? '#fff5f5' : '#fff',
+    backgroundColor: isActive ? 'var(--config-active-bg)' : 'var(--config-surface)',
     cursor: 'pointer',
     transition: 'all 0.15s',
     fontSize: '14px',
     fontWeight: isActive ? '600' : '400',
-    color: isActive ? '#d5232b' : '#495057',
+    color: isActive ? 'var(--config-active)' : 'var(--text-secondary)',
     outline: 'none',
     marginBottom: '12px',
     display: 'flex',
@@ -142,7 +142,7 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
           }}>
             <div style={{
               fontSize: '13px',
-              color: '#6c757d',
+              color: 'var(--text-tertiary)',
               marginBottom: '8px',
             }}>
               {file.name}
@@ -151,7 +151,7 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
               <div style={{
                 fontSize: '14px',
                 fontWeight: '600',
-                color: '#d5232b',
+                color: 'var(--config-active)',
               }}>
                 Page {currentPage} of {pageCount}
               </div>
@@ -161,7 +161,7 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
           {/* Preview with dynamic rotation */}
           <div style={{
             padding: '24px',
-            backgroundColor: '#f8f9fa',
+            backgroundColor: 'var(--config-bg)',
             borderRadius: '8px',
             textAlign: 'center',
             display: 'flex',
@@ -178,14 +178,14 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
           <div style={{
             marginTop: '20px',
             padding: '16px',
-            backgroundColor: '#fff',
+            backgroundColor: 'var(--config-surface)',
             borderRadius: '8px',
-            border: '1px solid #e9ecef',
+            border: '1px solid var(--config-border)',
             textAlign: 'center',
           }}>
             <div style={{
               fontSize: '14px',
-              color: '#6c757d',
+              color: 'var(--text-tertiary)',
               marginBottom: '8px',
             }}>
               Current rotation
@@ -193,7 +193,7 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
             <div style={{
               fontSize: '32px',
               fontWeight: '700',
-              color: '#d5232b',
+              color: 'var(--config-active)',
               marginBottom: '12px',
               transition: 'all 0.3s ease',
             }}>
@@ -205,7 +205,7 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
                 cx="30"
                 cy="30"
                 r="25"
-                stroke="#d5232b"
+                stroke="var(--config-active)"
                 strokeWidth="3"
                 fill="none"
               />
@@ -218,7 +218,7 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
               >
                 <path
                   d="M30 5 L35 12 L25 12 Z"
-                  fill="#d5232b"
+                  fill="var(--config-active)"
                 />
               </g>
             </svg>
@@ -238,18 +238,18 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
                 disabled={currentPage === 1}
                 style={{
                   padding: '6px 12px',
-                  border: '1px solid #dee2e6',
+                  border: '1px solid var(--config-border)',
                   borderRadius: '4px',
-                  backgroundColor: '#fff',
+                  backgroundColor: 'var(--config-surface)',
                   cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
                   opacity: currentPage === 1 ? 0.5 : 1,
                   fontSize: '13px',
-                  color: '#495057',
+                  color: 'var(--text-secondary)',
                 }}
               >
                 ← Prev
               </button>
-              <span style={{ fontSize: '13px', color: '#6c757d' }}>
+              <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
                 {currentPage} / {pageCount}
               </span>
               <button
@@ -257,13 +257,13 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
                 disabled={currentPage === pageCount}
                 style={{
                   padding: '6px 12px',
-                  border: '1px solid #dee2e6',
+                  border: '1px solid var(--config-border)',
                   borderRadius: '4px',
-                  backgroundColor: '#fff',
+                  backgroundColor: 'var(--config-surface)',
                   cursor: currentPage === pageCount ? 'not-allowed' : 'pointer',
                   opacity: currentPage === pageCount ? 0.5 : 1,
                   fontSize: '13px',
-                  color: '#495057',
+                  color: 'var(--text-secondary)',
                 }}
               >
                 Next →
@@ -276,7 +276,7 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
       {/* RIGHT: Configuration Section */}
       <div style={configSectionStyle}>
         {/* Header */}
-        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#212529', marginBottom: '32px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '32px' }}>
           Rotate PDF options
         </h2>
 
@@ -301,7 +301,7 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
           <label style={labelStyle}>Apply to</label>
           <div style={{
             padding: '16px',
-            backgroundColor: '#f8f9fa',
+            backgroundColor: 'var(--config-bg)',
             borderRadius: '8px',
           }}>
             <label style={{
@@ -318,11 +318,11 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
                 style={{
                   width: '18px',
                   height: '18px',
-                  accentColor: '#d5232b',
+                  accentColor: 'var(--config-active)',
                   cursor: 'pointer',
                 }}
               />
-              <span style={{ fontSize: '14px', color: '#495057' }}>
+              <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
                 All pages
               </span>
             </label>
@@ -339,11 +339,11 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
                 style={{
                   width: '18px',
                   height: '18px',
-                  accentColor: '#d5232b',
+                  accentColor: 'var(--config-active)',
                   cursor: 'pointer',
                 }}
               />
-              <span style={{ fontSize: '14px', color: '#495057' }}>
+              <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
                 Specific pages
               </span>
             </label>
@@ -356,11 +356,11 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
                   width: '100%',
                   marginTop: '12px',
                   padding: '10px 12px',
-                  border: '1px solid #dee2e6',
+                  border: '1px solid var(--config-border)',
                   borderRadius: '6px',
                   fontSize: '14px',
-                  color: '#495057',
-                  backgroundColor: '#fff',
+                  color: 'var(--text-secondary)',
+                  backgroundColor: 'var(--config-surface)',
                   outline: 'none',
                 }}
                 onChange={(e) => {
@@ -381,7 +381,7 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
           style={{
             width: '100%',
             padding: '16px',
-            backgroundColor: '#d5232b',
+            backgroundColor: 'var(--config-active)',
             color: '#fff',
             border: 'none',
             borderRadius: '8px',
@@ -396,10 +396,10 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
             marginTop: 'auto',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#b81f26';
+            e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#d5232b';
+            e.currentTarget.style.backgroundColor = 'var(--config-active)';
           }}
         >
           Rotate PDF

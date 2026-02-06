@@ -39,13 +39,14 @@ const ProductGrid: React.FC<ToolGridProps> = ({ onToolClick }) => {
 
           <div className="controls">
               {/* Search */}
-              <div className="search-box">
-                  <input 
-                    type="text" 
-                    placeholder="Search tools..." 
+              <div className="search-box" role="search">
+                  <input
+                    type="text"
+                    placeholder="Search tools..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="search-input"
+                    aria-label="Search tools"
                   />
                   <div className="search-icon-wrapper">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-sm">
@@ -55,10 +56,12 @@ const ProductGrid: React.FC<ToolGridProps> = ({ onToolClick }) => {
               </div>
 
               {/* Categories */}
-              <div className="filter-group">
+              <div className="filter-group" role="tablist" aria-label="Filter by category">
                 {categories.map(cat => (
                 <button
                     key={cat}
+                    role="tab"
+                    aria-selected={activeCategory === cat}
                     onClick={() => setActiveCategory(cat)}
                     className={`filter-btn ${activeCategory === cat ? 'active' : ''}`}
                 >
@@ -70,12 +73,16 @@ const ProductGrid: React.FC<ToolGridProps> = ({ onToolClick }) => {
         </div>
 
         {/* Tools Grid */}
-        <div className="grid-layout">
-          {filteredTools.map(tool => (
-            <div 
-                key={tool.id} 
+        <div className="grid-layout" role="list">
+          {filteredTools.map((tool, index) => (
+            <div
+                key={tool.id}
+                role="listitem"
+                tabIndex={0}
                 onClick={() => onToolClick(tool)}
-                className="tool-card animate-fade-in"
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToolClick(tool); } }}
+                className={`tool-card animate-fade-in stagger-${(index % 5) + 1}`}
+                aria-label={`${tool.name} — ${tool.description}`}
             >
                 <div>
                     <div className="tool-icon">
@@ -86,7 +93,7 @@ const ProductGrid: React.FC<ToolGridProps> = ({ onToolClick }) => {
                     <h3 className="tool-name">{tool.name}</h3>
                     <p className="tool-desc">{tool.description}</p>
                 </div>
-                
+
                 <div className="card-footer">
                     <span className="card-category">{tool.category}</span>
                     <span className="arrow-icon">
@@ -98,9 +105,9 @@ const ProductGrid: React.FC<ToolGridProps> = ({ onToolClick }) => {
             </div>
           ))}
         </div>
-        
+
         {filteredTools.length === 0 && (
-            <div className="flex-center" style={{ padding: '6rem 0', color: '#A8A29E' }}>
+            <div className="flex-center" style={{ padding: '6rem 0', color: 'var(--text-tertiary)' }}>
                 <p>No tools found matching your criteria.</p>
             </div>
         )}

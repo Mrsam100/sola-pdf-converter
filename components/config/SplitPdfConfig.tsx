@@ -117,11 +117,11 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
     display: 'grid',
     gridTemplateColumns: '60% 40%',
     minHeight: '100vh',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'var(--config-bg)',
   };
 
   const previewSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px',
     overflowY: 'auto',
     display: 'flex',
@@ -130,9 +130,9 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
   };
 
   const configSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px 32px',
-    borderLeft: '1px solid #e9ecef',
+    borderLeft: '1px solid var(--config-border)',
     display: 'flex',
     flexDirection: 'column',
   };
@@ -144,16 +144,16 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
   const labelStyle: React.CSSProperties = {
     fontSize: '14px',
     fontWeight: '600',
-    color: '#212529',
+    color: 'var(--text-primary)',
     marginBottom: '12px',
     display: 'block',
   };
 
   const modeButtonStyle = (isActive: boolean): React.CSSProperties => ({
     padding: '16px',
-    border: isActive ? '2px solid #d5232b' : '2px solid #dee2e6',
+    border: isActive ? '2px solid var(--config-active)' : '2px solid var(--config-border)',
     borderRadius: '8px',
-    backgroundColor: isActive ? '#fff5f5' : '#fff',
+    backgroundColor: isActive ? 'var(--config-active-bg)' : 'var(--config-surface)',
     cursor: 'pointer',
     transition: 'all 0.15s',
     textAlign: 'left',
@@ -177,14 +177,14 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
             <div style={{
               fontSize: '16px',
               fontWeight: '600',
-              color: '#212529',
+              color: 'var(--text-primary)',
               marginBottom: '8px',
             }}>
               Page thumbnails
             </div>
             <div style={{
               fontSize: '13px',
-              color: '#6c757d',
+              color: 'var(--text-tertiary)',
               marginBottom: '8px',
             }}>
               {file.name}
@@ -193,7 +193,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
               <div style={{
                 fontSize: '14px',
                 fontWeight: '600',
-                color: '#d5232b',
+                color: 'var(--config-active)',
               }}>
                 {pageCount} {pageCount === 1 ? 'page' : 'pages'}
               </div>
@@ -215,9 +215,9 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                 <div key={i} style={{ textAlign: 'center', width: '100%' }}>
                   <div style={{
                     padding: '8px',
-                    backgroundColor: isSelected ? '#fff5f5' : '#f8f9fa',
+                    backgroundColor: isSelected ? 'var(--config-active-bg)' : 'var(--config-bg)',
                     borderRadius: '8px',
-                    border: isSelected ? '3px solid #d5232b' : '1px solid #e9ecef',
+                    border: isSelected ? '3px solid var(--config-active)' : '1px solid var(--config-border)',
                     transform: isSelected ? 'scale(1.05)' : 'scale(1)',
                     transition: 'all 0.3s ease',
                     position: 'relative',
@@ -238,7 +238,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                         width: '24px',
                         height: '24px',
                         borderRadius: '50%',
-                        backgroundColor: '#d5232b',
+                        backgroundColor: 'var(--config-active)',
                         color: '#fff',
                         display: 'flex',
                         alignItems: 'center',
@@ -253,7 +253,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                   </div>
                   <div style={{
                     fontSize: '11px',
-                    color: isSelected ? '#d5232b' : '#6c757d',
+                    color: isSelected ? 'var(--config-active)' : 'var(--text-tertiary)',
                     marginTop: '6px',
                     fontWeight: isSelected ? '700' : '600',
                     transition: 'all 0.3s ease',
@@ -269,7 +269,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
             <div style={{
               textAlign: 'center',
               padding: '16px',
-              color: '#6c757d',
+              color: 'var(--text-tertiary)',
               fontSize: '13px',
               marginTop: '16px',
             }}>
@@ -282,14 +282,14 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
             <div style={{
               marginTop: '24px',
               padding: '16px',
-              backgroundColor: '#d4edda',
+              backgroundColor: 'var(--success-bg)',
               borderRadius: '8px',
-              border: '1px solid #c3e6cb',
+              border: '1px solid var(--success)',
               textAlign: 'center',
             }}>
               <div style={{
                 fontSize: '13px',
-                color: '#155724',
+                color: 'var(--success)',
                 marginBottom: '4px',
               }}>
                 Pages selected for {config.mode === 'extract' ? 'extraction' : 'splitting'}
@@ -297,14 +297,14 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
               <div style={{
                 fontSize: '20px',
                 fontWeight: '700',
-                color: '#0a3622',
+                color: 'var(--success)',
               }}>
                 {selectedPages.size} page{selectedPages.size !== 1 ? 's' : ''}
               </div>
               {config.mode === 'every-n-pages' && config.splitEvery && (
                 <div style={{
                   fontSize: '12px',
-                  color: '#155724',
+                  color: 'var(--success)',
                   marginTop: '4px',
                 }}>
                   Will create {Math.ceil(pageCount / config.splitEvery)} separate PDFs
@@ -318,7 +318,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
       {/* RIGHT: Configuration Section */}
       <div style={configSectionStyle}>
         {/* Header */}
-        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#212529', marginBottom: '32px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '32px' }}>
           Split PDF options
         </h2>
 
@@ -335,14 +335,14 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                 <div style={{
                   fontSize: '14px',
                   fontWeight: '600',
-                  color: config.mode === value ? '#d5232b' : '#212529',
+                  color: config.mode === value ? 'var(--config-active)' : 'var(--text-primary)',
                   marginBottom: '4px',
                 }}>
                   {label}
                 </div>
                 <div style={{
                   fontSize: '13px',
-                  color: '#6c757d',
+                  color: 'var(--text-tertiary)',
                 }}>
                   {description}
                 </div>
@@ -355,7 +355,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
         <div style={sectionStyle}>
           <div style={{
             padding: '16px',
-            backgroundColor: '#f8f9fa',
+            backgroundColor: 'var(--config-bg)',
             borderRadius: '8px',
           }}>
             {config.mode === 'ranges' && (
@@ -363,7 +363,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                 <label style={{
                   fontSize: '14px',
                   fontWeight: '600',
-                  color: '#212529',
+                  color: 'var(--text-primary)',
                   display: 'block',
                   marginBottom: '8px',
                 }}>
@@ -379,17 +379,17 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                   style={{
                     width: '100%',
                     padding: '10px 12px',
-                    border: '1px solid #dee2e6',
+                    border: '1px solid var(--config-border)',
                     borderRadius: '6px',
                     fontSize: '14px',
-                    color: '#495057',
-                    backgroundColor: '#fff',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'var(--config-surface)',
                     outline: 'none',
                   }}
                 />
                 <div style={{
                   fontSize: '12px',
-                  color: '#6c757d',
+                  color: 'var(--text-tertiary)',
                   marginTop: '8px',
                 }}>
                   Separate ranges with commas. Each range will become a separate PDF.
@@ -402,7 +402,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                 <label style={{
                   fontSize: '14px',
                   fontWeight: '600',
-                  color: '#212529',
+                  color: 'var(--text-primary)',
                   display: 'block',
                   marginBottom: '8px',
                 }}>
@@ -418,17 +418,17 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                   style={{
                     width: '100%',
                     padding: '10px 12px',
-                    border: '1px solid #dee2e6',
+                    border: '1px solid var(--config-border)',
                     borderRadius: '6px',
                     fontSize: '14px',
-                    color: '#495057',
-                    backgroundColor: '#fff',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'var(--config-surface)',
                     outline: 'none',
                   }}
                 />
                 <div style={{
                   fontSize: '12px',
-                  color: '#6c757d',
+                  color: 'var(--text-tertiary)',
                   marginTop: '8px',
                 }}>
                   Enter page numbers separated by commas. Each page will become a separate PDF.
@@ -441,7 +441,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                 <label style={{
                   fontSize: '14px',
                   fontWeight: '600',
-                  color: '#212529',
+                  color: 'var(--text-primary)',
                   display: 'block',
                   marginBottom: '8px',
                 }}>
@@ -456,17 +456,17 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                   style={{
                     width: '150px',
                     padding: '10px 12px',
-                    border: '1px solid #dee2e6',
+                    border: '1px solid var(--config-border)',
                     borderRadius: '6px',
                     fontSize: '14px',
-                    color: '#495057',
-                    backgroundColor: '#fff',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'var(--config-surface)',
                     outline: 'none',
                   }}
                 />
                 <div style={{
                   fontSize: '12px',
-                  color: '#6c757d',
+                  color: 'var(--text-tertiary)',
                   marginTop: '8px',
                 }}>
                   PDF will be split into chunks of this many pages.
@@ -481,7 +481,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
           <label style={labelStyle}>Output format</label>
           <div style={{
             padding: '16px',
-            backgroundColor: '#f8f9fa',
+            backgroundColor: 'var(--config-bg)',
             borderRadius: '8px',
           }}>
             <label style={{
@@ -498,15 +498,15 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                 style={{
                   width: '18px',
                   height: '18px',
-                  accentColor: '#d5232b',
+                  accentColor: 'var(--config-active)',
                   cursor: 'pointer',
                 }}
               />
               <div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#212529' }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
                   Separate files
                 </div>
-                <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
                   Each range/page as a separate PDF
                 </div>
               </div>
@@ -524,15 +524,15 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
                 style={{
                   width: '18px',
                   height: '18px',
-                  accentColor: '#d5232b',
+                  accentColor: 'var(--config-active)',
                   cursor: 'pointer',
                 }}
               />
               <div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#212529' }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
                   Single merged file
                 </div>
-                <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
                   All selected pages in one PDF
                 </div>
               </div>
@@ -549,7 +549,7 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
           style={{
             width: '100%',
             padding: '16px',
-            backgroundColor: '#d5232b',
+            backgroundColor: 'var(--config-active)',
             color: '#fff',
             border: 'none',
             borderRadius: '8px',
@@ -564,10 +564,10 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
             marginTop: 'auto',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#b81f26';
+            e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#d5232b';
+            e.currentTarget.style.backgroundColor = 'var(--config-active)';
           }}
         >
           Split PDF

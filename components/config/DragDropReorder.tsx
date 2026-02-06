@@ -122,7 +122,7 @@ export const DragDropReorder: React.FC<DragDropReorderProps> = ({
       )}
       <div style={{
         fontSize: '12px',
-        color: '#666',
+        color: 'var(--text-secondary)',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
@@ -155,9 +155,9 @@ export const DragDropReorder: React.FC<DragDropReorderProps> = ({
           className={`draggable-item ${itemClassName}`}
           style={{
             position: 'relative',
-            border: dragOverIndex === index ? '2px dashed #4CAF50' : '2px solid #e0e0e0',
+            border: dragOverIndex === index ? '2px dashed var(--success)' : '2px solid var(--config-border)',
             borderRadius: '8px',
-            backgroundColor: draggedIndex === index ? '#f5f5f5' : '#fff',
+            backgroundColor: draggedIndex === index ? 'var(--config-bg)' : 'var(--config-surface)',
             cursor: 'grab',
             transition: 'all 0.2s ease',
             userSelect: 'none',
@@ -170,7 +170,7 @@ export const DragDropReorder: React.FC<DragDropReorderProps> = ({
               top: '8px',
               left: '8px',
               fontSize: '18px',
-              color: '#999',
+              color: 'var(--text-tertiary)',
               cursor: 'grab',
             }}
             title="Drag to reorder"
@@ -199,7 +199,7 @@ export const DragDropReorder: React.FC<DragDropReorderProps> = ({
                   height: '24px',
                   border: 'none',
                   borderRadius: '4px',
-                  backgroundColor: '#f0f0f0',
+                  backgroundColor: 'var(--config-bg)',
                   cursor: 'pointer',
                   fontSize: '14px',
                   display: 'flex',
@@ -222,7 +222,7 @@ export const DragDropReorder: React.FC<DragDropReorderProps> = ({
                   height: '24px',
                   border: 'none',
                   borderRadius: '4px',
-                  backgroundColor: '#f0f0f0',
+                  backgroundColor: 'var(--config-bg)',
                   cursor: 'pointer',
                   fontSize: '14px',
                   display: 'flex',

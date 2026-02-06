@@ -13,6 +13,7 @@ import Footer from './components/Footer';
 import { ViewState } from './types';
 import { setupGlobalErrorHandling, logger, performanceMonitor } from './utils/monitoring';
 import { MobileOptimized, LowBatteryWarning, SlowConnectionWarning } from './components/MobileOptimized';
+import ToastContainer from './components/Toast';
 import { usePreventZoom } from './hooks/useMobile';
 
 function App() {
@@ -58,12 +59,13 @@ function App() {
   return (
     <MobileOptimized>
       <div>
+        <a href="#main-content" className="skip-link">Skip to content</a>
         <Navbar
             onNavClick={handleNavClick}
             currentView={view.type}
         />
 
-        <main>
+        <main id="main-content">
           {view.type === 'home' && (
             <>
               <Hero onExplore={() => setView({ type: 'dashboard' })} />
@@ -101,6 +103,9 @@ function App() {
         {/* Mobile-specific warnings */}
         <LowBatteryWarning />
         <SlowConnectionWarning />
+
+        {/* Toast notifications */}
+        <ToastContainer />
       </div>
     </MobileOptimized>
   );

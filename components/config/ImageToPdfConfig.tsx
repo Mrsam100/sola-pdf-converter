@@ -121,11 +121,11 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
     display: 'grid',
     gridTemplateColumns: '60% 40%',
     minHeight: '100vh',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'var(--config-bg)',
   };
 
   const previewSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px',
     display: 'flex',
     flexDirection: 'column',
@@ -134,9 +134,9 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
   };
 
   const configSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px 32px',
-    borderLeft: '1px solid #e9ecef',
+    borderLeft: '1px solid var(--config-border)',
     display: 'flex',
     flexDirection: 'column',
   };
@@ -148,7 +148,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
   const labelStyle: React.CSSProperties = {
     fontSize: '14px',
     fontWeight: '600',
-    color: '#212529',
+    color: 'var(--text-primary)',
     marginBottom: '12px',
     display: 'block',
   };
@@ -161,9 +161,9 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
   const orientationButtonStyle = (isActive: boolean): React.CSSProperties => ({
     flex: 1,
     padding: '16px',
-    border: isActive ? '2px solid #d5232b' : '2px solid #dee2e6',
+    border: isActive ? '2px solid var(--config-active)' : '2px solid var(--config-border)',
     borderRadius: '8px',
-    backgroundColor: isActive ? '#fff5f5' : '#fff',
+    backgroundColor: isActive ? 'var(--config-active-bg)' : 'var(--config-surface)',
     cursor: 'pointer',
     transition: 'all 0.15s',
     display: 'flex',
@@ -176,9 +176,9 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
   const marginButtonStyle = (isActive: boolean): React.CSSProperties => ({
     flex: 1,
     padding: '20px 12px',
-    border: isActive ? '2px solid #d5232b' : '2px solid #dee2e6',
+    border: isActive ? '2px solid var(--config-active)' : '2px solid var(--config-border)',
     borderRadius: '8px',
-    backgroundColor: isActive ? '#fff5f5' : '#fff',
+    backgroundColor: isActive ? 'var(--config-active-bg)' : 'var(--config-surface)',
     cursor: 'pointer',
     transition: 'all 0.15s',
     display: 'flex',
@@ -210,7 +210,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
                   width: '36px',
                   height: '36px',
                   borderRadius: '50%',
-                  backgroundColor: '#d5232b',
+                  backgroundColor: 'var(--config-active)',
                   color: '#fff',
                   display: 'flex',
                   alignItems: 'center',
@@ -229,7 +229,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
                     width: '24px',
                     height: '24px',
                     borderRadius: '50%',
-                    backgroundColor: '#d5232b',
+                    backgroundColor: 'var(--config-active)',
                     border: '2px solid #fff',
                     display: 'flex',
                     alignItems: 'center',
@@ -246,7 +246,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
             {/* Dynamic Live Preview */}
             <div style={{
               padding: '24px',
-              backgroundColor: '#f8f9fa',
+              backgroundColor: 'var(--config-bg)',
               borderRadius: '8px',
               textAlign: 'center',
               position: 'relative',
@@ -258,7 +258,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
               {/* Page representation */}
               <div style={{
                 position: 'relative',
-                backgroundColor: '#fff',
+                backgroundColor: 'var(--config-surface)',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                 borderRadius: '4px',
                 width: `${pageDimensions.width}px`,
@@ -268,7 +268,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
                 padding: `${marginPadding}px`,
                 transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                 overflow: 'hidden',
-                border: '2px solid #e0e0e0',
+                border: '2px solid var(--config-border)',
               }}>
                 {/* Margin visualization */}
                 {marginPadding > 0 && (
@@ -291,7 +291,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: '#fafafa',
+                  backgroundColor: 'var(--config-bg)',
                   borderRadius: '2px',
                   overflow: 'hidden',
                 }}>
@@ -333,7 +333,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
               marginTop: '16px',
               textAlign: 'center',
               fontSize: '13px',
-              color: '#6c757d',
+              color: 'var(--text-tertiary)',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -355,9 +355,9 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
                   disabled={selectedImageIndex === 0}
                   style={{
                     padding: '6px 12px',
-                    border: '1px solid #dee2e6',
+                    border: '1px solid var(--config-border)',
                     borderRadius: '4px',
-                    backgroundColor: '#fff',
+                    backgroundColor: 'var(--config-surface)',
                     cursor: selectedImageIndex === 0 ? 'not-allowed' : 'pointer',
                     opacity: selectedImageIndex === 0 ? 0.5 : 1,
                     fontSize: '13px',
@@ -365,7 +365,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
                 >
                   ← Prev
                 </button>
-                <span style={{ fontSize: '13px', color: '#6c757d' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
                   {selectedImageIndex + 1} / {files.length}
                 </span>
                 <button
@@ -373,9 +373,9 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
                   disabled={selectedImageIndex === files.length - 1}
                   style={{
                     padding: '6px 12px',
-                    border: '1px solid #dee2e6',
+                    border: '1px solid var(--config-border)',
                     borderRadius: '4px',
-                    backgroundColor: '#fff',
+                    backgroundColor: 'var(--config-surface)',
                     cursor: selectedImageIndex === files.length - 1 ? 'not-allowed' : 'pointer',
                     opacity: selectedImageIndex === files.length - 1 ? 0.5 : 1,
                     fontSize: '13px',
@@ -392,7 +392,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
       {/* RIGHT: Configuration Section */}
       <div style={configSectionStyle}>
         {/* Header */}
-        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#212529', marginBottom: '32px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '32px' }}>
           Image to PDF options
         </h2>
 
@@ -405,9 +405,9 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
               onClick={() => updateConfig({ orientation: 'portrait' })}
             >
               <svg width="24" height="32" viewBox="0 0 24 32" fill="none">
-                <rect x="1" y="1" width="22" height="30" rx="2" stroke={config.orientation === 'portrait' ? '#d5232b' : '#adb5bd'} strokeWidth="2" fill="none"/>
+                <rect x="1" y="1" width="22" height="30" rx="2" stroke={config.orientation === 'portrait' ? 'var(--config-active)' : 'var(--text-tertiary)'} strokeWidth="2" fill="none"/>
               </svg>
-              <span style={{ fontSize: '14px', color: config.orientation === 'portrait' ? '#d5232b' : '#495057', fontWeight: config.orientation === 'portrait' ? '600' : '400' }}>
+              <span style={{ fontSize: '14px', color: config.orientation === 'portrait' ? 'var(--config-active)' : 'var(--text-secondary)', fontWeight: config.orientation === 'portrait' ? '600' : '400' }}>
                 Portrait
               </span>
             </button>
@@ -416,9 +416,9 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
               onClick={() => updateConfig({ orientation: 'landscape' })}
             >
               <svg width="32" height="24" viewBox="0 0 32 24" fill="none">
-                <rect x="1" y="1" width="30" height="22" rx="2" stroke={config.orientation === 'landscape' ? '#d5232b' : '#adb5bd'} strokeWidth="2" fill="none"/>
+                <rect x="1" y="1" width="30" height="22" rx="2" stroke={config.orientation === 'landscape' ? 'var(--config-active)' : 'var(--text-tertiary)'} strokeWidth="2" fill="none"/>
               </svg>
-              <span style={{ fontSize: '14px', color: config.orientation === 'landscape' ? '#d5232b' : '#495057', fontWeight: config.orientation === 'landscape' ? '600' : '400' }}>
+              <span style={{ fontSize: '14px', color: config.orientation === 'landscape' ? 'var(--config-active)' : 'var(--text-secondary)', fontWeight: config.orientation === 'landscape' ? '600' : '400' }}>
                 Landscape
               </span>
             </button>
@@ -434,11 +434,11 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
             style={{
               width: '100%',
               padding: '12px 16px',
-              border: '1px solid #dee2e6',
+              border: '1px solid var(--config-border)',
               borderRadius: '8px',
               fontSize: '14px',
-              color: '#495057',
-              backgroundColor: '#fff',
+              color: 'var(--text-secondary)',
+              backgroundColor: 'var(--config-surface)',
               cursor: 'pointer',
               outline: 'none',
             }}
@@ -460,9 +460,9 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
               onClick={() => updateConfig({ margin: 'none' })}
             >
               <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                <rect x="4" y="4" width="32" height="32" rx="2" stroke={config.margin === 'none' ? '#d5232b' : '#adb5bd'} strokeWidth="2" fill={config.margin === 'none' ? '#d5232b' : '#adb5bd'}/>
+                <rect x="4" y="4" width="32" height="32" rx="2" stroke={config.margin === 'none' ? 'var(--config-active)' : 'var(--text-tertiary)'} strokeWidth="2" fill={config.margin === 'none' ? 'var(--config-active)' : 'var(--text-tertiary)'}/>
               </svg>
-              <span style={{ fontSize: '13px', color: config.margin === 'none' ? '#d5232b' : '#495057', fontWeight: config.margin === 'none' ? '600' : '400' }}>
+              <span style={{ fontSize: '13px', color: config.margin === 'none' ? 'var(--config-active)' : 'var(--text-secondary)', fontWeight: config.margin === 'none' ? '600' : '400' }}>
                 No margin
               </span>
             </button>
@@ -471,10 +471,10 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
               onClick={() => updateConfig({ margin: 'small' })}
             >
               <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                <rect x="4" y="4" width="32" height="32" rx="2" stroke={config.margin === 'small' ? '#d5232b' : '#adb5bd'} strokeWidth="2" fill="none"/>
-                <rect x="8" y="8" width="24" height="24" rx="1" fill={config.margin === 'small' ? '#d5232b' : '#adb5bd'}/>
+                <rect x="4" y="4" width="32" height="32" rx="2" stroke={config.margin === 'small' ? 'var(--config-active)' : 'var(--text-tertiary)'} strokeWidth="2" fill="none"/>
+                <rect x="8" y="8" width="24" height="24" rx="1" fill={config.margin === 'small' ? 'var(--config-active)' : 'var(--text-tertiary)'}/>
               </svg>
-              <span style={{ fontSize: '13px', color: config.margin === 'small' ? '#d5232b' : '#495057', fontWeight: config.margin === 'small' ? '600' : '400' }}>
+              <span style={{ fontSize: '13px', color: config.margin === 'small' ? 'var(--config-active)' : 'var(--text-secondary)', fontWeight: config.margin === 'small' ? '600' : '400' }}>
                 Small
               </span>
             </button>
@@ -483,10 +483,10 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
               onClick={() => updateConfig({ margin: 'medium' })}
             >
               <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                <rect x="4" y="4" width="32" height="32" rx="2" stroke={config.margin === 'medium' ? '#d5232b' : '#adb5bd'} strokeWidth="2" fill="none"/>
-                <rect x="10" y="10" width="20" height="20" rx="1" fill={config.margin === 'medium' ? '#d5232b' : '#adb5bd'}/>
+                <rect x="4" y="4" width="32" height="32" rx="2" stroke={config.margin === 'medium' ? 'var(--config-active)' : 'var(--text-tertiary)'} strokeWidth="2" fill="none"/>
+                <rect x="10" y="10" width="20" height="20" rx="1" fill={config.margin === 'medium' ? 'var(--config-active)' : 'var(--text-tertiary)'}/>
               </svg>
-              <span style={{ fontSize: '13px', color: config.margin === 'medium' ? '#d5232b' : '#495057', fontWeight: config.margin === 'medium' ? '600' : '400' }}>
+              <span style={{ fontSize: '13px', color: config.margin === 'medium' ? 'var(--config-active)' : 'var(--text-secondary)', fontWeight: config.margin === 'medium' ? '600' : '400' }}>
                 Big
               </span>
             </button>
@@ -508,11 +508,11 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
               style={{
                 width: '18px',
                 height: '18px',
-                accentColor: '#17c1bc',
+                accentColor: 'var(--info)',
                 cursor: 'pointer',
               }}
             />
-            <span style={{ fontSize: '14px', color: '#495057' }}>
+            <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
               Merge all images in one PDF file
             </span>
           </label>
@@ -527,7 +527,7 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
           style={{
             width: '100%',
             padding: '16px',
-            backgroundColor: '#d5232b',
+            backgroundColor: 'var(--config-active)',
             color: '#fff',
             border: 'none',
             borderRadius: '8px',
@@ -542,10 +542,10 @@ export const ImageToPdfConfig: React.FC<ImageToPdfConfigProps> = ({
             marginTop: 'auto',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#b81f26';
+            e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#d5232b';
+            e.currentTarget.style.backgroundColor = 'var(--config-active)';
           }}
         >
           Convert to PDF

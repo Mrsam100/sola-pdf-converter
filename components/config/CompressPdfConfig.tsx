@@ -74,11 +74,11 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
     display: 'grid',
     gridTemplateColumns: '60% 40%',
     minHeight: '100vh',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'var(--config-bg)',
   };
 
   const previewSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px',
     display: 'flex',
     flexDirection: 'column',
@@ -87,9 +87,9 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
   };
 
   const configSectionStyle: React.CSSProperties = {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--config-surface)',
     padding: '40px 32px',
-    borderLeft: '1px solid #e9ecef',
+    borderLeft: '1px solid var(--config-border)',
     display: 'flex',
     flexDirection: 'column',
   };
@@ -101,16 +101,16 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
   const labelStyle: React.CSSProperties = {
     fontSize: '14px',
     fontWeight: '600',
-    color: '#212529',
+    color: 'var(--text-primary)',
     marginBottom: '12px',
     display: 'block',
   };
 
   const compressionButtonStyle = (isActive: boolean): React.CSSProperties => ({
     padding: '16px',
-    border: isActive ? '2px solid #d5232b' : '2px solid #dee2e6',
+    border: isActive ? '2px solid var(--config-active)' : '2px solid var(--config-border)',
     borderRadius: '8px',
-    backgroundColor: isActive ? '#fff5f5' : '#fff',
+    backgroundColor: isActive ? 'var(--config-active-bg)' : 'var(--config-surface)',
     cursor: 'pointer',
     transition: 'all 0.15s',
     textAlign: 'left',
@@ -133,7 +133,7 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
           }}>
             <div style={{
               fontSize: '13px',
-              color: '#6c757d',
+              color: 'var(--text-tertiary)',
               marginBottom: '12px',
             }}>
               {file.name}
@@ -141,14 +141,14 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
             <div style={{
               fontSize: '24px',
               fontWeight: '700',
-              color: '#212529',
+              color: 'var(--text-primary)',
               marginBottom: '4px',
             }}>
               {fileSizeMB} MB
             </div>
             <div style={{
               fontSize: '12px',
-              color: '#6c757d',
+              color: 'var(--text-tertiary)',
             }}>
               Current file size
             </div>
@@ -157,7 +157,7 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
           {/* Preview with compression quality indicator */}
           <div style={{
             padding: '24px',
-            backgroundColor: '#f8f9fa',
+            backgroundColor: 'var(--config-bg)',
             borderRadius: '8px',
             textAlign: 'center',
           }}>
@@ -170,9 +170,9 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
           <div style={{
             marginTop: '20px',
             padding: '20px',
-            backgroundColor: '#fff',
+            backgroundColor: 'var(--config-surface)',
             borderRadius: '8px',
-            border: '1px solid #e9ecef',
+            border: '1px solid var(--config-border)',
           }}>
             <div style={{
               display: 'flex',
@@ -181,40 +181,40 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
               marginBottom: '16px',
             }}>
               <div>
-                <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
                   Original Size
                 </div>
-                <div style={{ fontSize: '18px', fontWeight: '600', color: '#495057' }}>
+                <div style={{ fontSize: '18px', fontWeight: '600', color: 'var(--text-secondary)' }}>
                   {fileSizeMB} MB
                 </div>
               </div>
               <div style={{
                 fontSize: '24px',
-                color: '#d5232b',
+                color: 'var(--config-active)',
                 fontWeight: '700',
               }}>
                 →
               </div>
               <div>
-                <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
                   Estimated Size
                 </div>
-                <div style={{ fontSize: '18px', fontWeight: '700', color: '#d5232b' }}>
+                <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--config-active)' }}>
                   {estimatedSize} MB
                 </div>
               </div>
             </div>
             <div style={{
               padding: '12px',
-              backgroundColor: '#d4edda',
+              backgroundColor: 'var(--success-bg)',
               borderRadius: '6px',
-              border: '1px solid #c3e6cb',
+              border: '1px solid var(--success)',
               textAlign: 'center',
             }}>
               <div style={{
                 fontSize: '14px',
                 fontWeight: '700',
-                color: '#155724',
+                color: 'var(--success)',
               }}>
                 {reductionPercentage}% size reduction
               </div>
@@ -226,7 +226,7 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
       {/* RIGHT: Configuration Section */}
       <div style={configSectionStyle}>
         {/* Header */}
-        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#212529', marginBottom: '32px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '32px' }}>
           Compress PDF options
         </h2>
 
@@ -243,14 +243,14 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
                 <div style={{
                   fontSize: '14px',
                   fontWeight: '600',
-                  color: config.compressionLevel === value ? '#d5232b' : '#212529',
+                  color: config.compressionLevel === value ? 'var(--config-active)' : 'var(--text-primary)',
                   marginBottom: '4px',
                 }}>
                   {label}
                 </div>
                 <div style={{
                   fontSize: '13px',
-                  color: '#6c757d',
+                  color: 'var(--text-tertiary)',
                 }}>
                   {description}
                 </div>
@@ -264,7 +264,7 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
           <label style={labelStyle}>Additional options</label>
           <div style={{
             padding: '16px',
-            backgroundColor: '#f8f9fa',
+            backgroundColor: 'var(--config-bg)',
             borderRadius: '8px',
           }}>
             <label style={{
@@ -281,15 +281,15 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
                 style={{
                   width: '18px',
                   height: '18px',
-                  accentColor: '#d5232b',
+                  accentColor: 'var(--config-active)',
                   cursor: 'pointer',
                 }}
               />
               <div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#212529' }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
                   Optimize images
                 </div>
-                <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
                   Compress embedded images for smaller file size
                 </div>
               </div>
@@ -308,15 +308,15 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
                 style={{
                   width: '18px',
                   height: '18px',
-                  accentColor: '#d5232b',
+                  accentColor: 'var(--config-active)',
                   cursor: 'pointer',
                 }}
               />
               <div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#212529' }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
                   Remove metadata
                 </div>
-                <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
                   Remove author info, creation date, etc.
                 </div>
               </div>
@@ -333,7 +333,7 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
           style={{
             width: '100%',
             padding: '16px',
-            backgroundColor: '#d5232b',
+            backgroundColor: 'var(--config-active)',
             color: '#fff',
             border: 'none',
             borderRadius: '8px',
@@ -348,10 +348,10 @@ export const CompressPdfConfig: React.FC<CompressPdfConfigProps> = ({
             marginTop: 'auto',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#b81f26';
+            e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#d5232b';
+            e.currentTarget.style.backgroundColor = 'var(--config-active)';
           }}
         >
           Compress PDF

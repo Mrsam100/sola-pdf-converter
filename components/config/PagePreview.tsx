@@ -121,10 +121,10 @@ export const PagePreview: React.FC<PagePreviewProps> = ({
         display: 'inline-block',
         margin: '8px',
         cursor: onClick ? 'pointer' : 'default',
-        border: selected ? '3px solid #4CAF50' : '1px solid #ddd',
+        border: selected ? '3px solid var(--success)' : '1px solid var(--config-border)',
         borderRadius: '8px',
         overflow: 'hidden',
-        backgroundColor: '#f5f5f5',
+        backgroundColor: 'var(--config-bg)',
         transition: 'all 0.2s ease',
       }}
     >
@@ -135,17 +135,17 @@ export const PagePreview: React.FC<PagePreviewProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: '#fff',
+          backgroundColor: 'var(--config-surface)',
         }}
       >
         {loading && (
-          <div style={{ textAlign: 'center', color: '#666' }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
             Loading...
           </div>
         )}
 
         {error && (
-          <div style={{ textAlign: 'center', color: '#f44336', padding: '10px', fontSize: '12px' }}>
+          <div style={{ textAlign: 'center', color: 'var(--error)', padding: '10px', fontSize: '12px' }}>
             {error}
           </div>
         )}
@@ -168,9 +168,9 @@ export const PagePreview: React.FC<PagePreviewProps> = ({
           style={{
             padding: '8px',
             fontSize: '11px',
-            color: '#333',
-            backgroundColor: '#f9f9f9',
-            borderTop: '1px solid #e0e0e0',
+            color: 'var(--text-primary)',
+            backgroundColor: 'var(--config-bg)',
+            borderTop: '1px solid var(--config-border)',
             textAlign: 'center',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
