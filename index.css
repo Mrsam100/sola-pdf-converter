@@ -1662,3 +1662,92 @@ select:focus-visible {
   border-width: 0;
 }
 
+/* ========================================
+   Audio to Text — Tab Switcher
+   ======================================== */
+.audio-tab-group {
+  display: flex;
+  gap: 0;
+  padding: 0 1.5rem;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.audio-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.audio-tab:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.audio-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.audio-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========================================
+   Audio to Text — Recording Button
+   ======================================== */
+.recording-btn {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid var(--border-color);
+  background: var(--surface-light);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  margin: 1rem auto;
+}
+
+.recording-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.05);
+}
+
+.recording-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  animation: recording-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(213, 35, 43, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 16px rgba(213, 35, 43, 0);
+  }
+}
+
+/* ========================================
+   Audio to Text — Interim Text
+   ======================================== */
+.interim-text {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+

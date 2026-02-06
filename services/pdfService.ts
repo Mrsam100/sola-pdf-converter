@@ -787,10 +787,17 @@ export const imagesToPDF = async (
  * @param ownerPassword - Optional password for modifying PDF permissions (defaults to userPassword)
  * @returns Promise<Uint8Array> - The encrypted PDF as a byte array
  */
+export interface EncryptPermissions {
+    printing?: boolean;
+    copying?: boolean;
+    modifying?: boolean;
+}
+
 export const encryptPDF = async (
     file: File,
     userPassword: string,
-    ownerPassword?: string
+    ownerPassword?: string,
+    permissions?: EncryptPermissions
 ): Promise<Uint8Array> => {
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
         throw new Error('File is not a PDF');
@@ -809,11 +816,11 @@ export const encryptPDF = async (
         userPassword: userPassword,
         ownerPassword: ownerPassword || userPassword,
         permissions: {
-            printing: 'highResolution',
-            modifying: false,
-            copying: false,
-            annotating: false,
-            fillingForms: false,
+            printing: permissions?.printing !== false ? 'highResolution' : 'none' as any,
+            modifying: permissions?.modifying ?? false,
+            copying: permissions?.copying ?? false,
+            annotating: permissions?.modifying ?? false,
+            fillingForms: permissions?.modifying ?? false,
             contentAccessibility: true,
             documentAssembly: false,
         },

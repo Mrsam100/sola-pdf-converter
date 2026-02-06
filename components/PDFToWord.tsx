@@ -255,25 +255,25 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
                                                     Conversion Mode
                                                 </label>
-                                                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                                                     <button
                                                         onClick={() => setMode('non-ocr')}
                                                         className={`filter-btn ${mode === 'non-ocr' ? 'active' : ''}`}
-                                                        style={{ flex: 1, minWidth: '200px' }}
+                                                        style={{ flex: 1, minWidth: '140px' }}
                                                     >
                                                         <div style={{ textAlign: 'left' }}>
                                                             <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Non-OCR</div>
-                                                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Fast &bull; For digital PDFs with selectable text</div>
+                                                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Fast &bull; Digital PDFs</div>
                                                         </div>
                                                     </button>
                                                     <button
                                                         onClick={() => setMode('ocr')}
                                                         className={`filter-btn ${mode === 'ocr' ? 'active' : ''}`}
-                                                        style={{ flex: 1, minWidth: '200px' }}
+                                                        style={{ flex: 1, minWidth: '140px' }}
                                                     >
                                                         <div style={{ textAlign: 'left' }}>
                                                             <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>OCR</div>
-                                                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Slower &bull; For scanned PDFs or images</div>
+                                                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Slower &bull; Scanned PDFs</div>
                                                         </div>
                                                     </button>
                                                 </div>

@@ -171,7 +171,7 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
 
                   {fileName ? (
                     <div className="file-preview">
-                      <div className="upload-icon-wrapper" style={{ color: '#2C2A26', background: 'transparent' }}>
+                      <div className="upload-icon-wrapper" style={{ color: 'var(--text-primary)', background: 'transparent' }}>
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-xl">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                         </svg>
@@ -186,8 +186,8 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                           <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                         </svg>
                       </div>
-                      <span style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: '0.5rem', color: '#2C2A26' }}>Drop your image here</span>
-                      <span style={{ color: '#A8A29E', fontSize: '0.875rem' }}>or click to browse</span>
+                      <span style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Drop your image here</span>
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>or click to browse</span>
                     </div>
                   )}
                 </div>
@@ -198,7 +198,7 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                     <div style={{
                       marginTop: '0.5rem',
                       padding: '1rem',
-                      background: '#F5F5F4',
+                      background: 'var(--surface-light)',
                       borderRadius: '0.5rem',
                       display: 'flex',
                       justifyContent: 'center',
@@ -215,7 +215,7 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                     <div style={{ marginTop: '1.5rem' }}>
                       <label className="label-text">
                         Sensitivity: {threshold}
-                        <span style={{ fontSize: '0.75rem', color: '#A8A29E', marginLeft: '0.5rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginLeft: '0.5rem' }}>
                           (Lower = stricter, Higher = more removal)
                         </span>
                       </label>
@@ -228,7 +228,7 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                         style={{
                           width: '100%',
                           marginTop: '0.5rem',
-                          accentColor: '#2C2A26'
+                          accentColor: 'var(--text-primary)'
                         }}
                       />
                     </div>
@@ -255,18 +255,18 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                 <h3 className="workspace-title" style={{ fontSize: '1.5rem' }}>Success!</h3>
                 <p className="workspace-desc" style={{ marginBottom: '2rem' }}>Background removed successfully</p>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
+                <div className="comparison-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
                   <div>
                     <label className="label-text">Original</label>
                     <div style={{
                       marginTop: '0.5rem',
                       padding: '1rem',
-                      background: '#F5F5F4',
+                      background: 'var(--surface-light)',
                       borderRadius: '0.5rem',
                       display: 'flex',
                       justifyContent: 'center',
                       alignItems: 'center',
-                      minHeight: '200px'
+                      minHeight: '150px'
                     }}>
                       <img
                         src={originalPreview}
@@ -280,12 +280,12 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                     <div style={{
                       marginTop: '0.5rem',
                       padding: '1rem',
-                      background: 'repeating-conic-gradient(#F5F5F4 0% 25%, #E7E5E4 0% 50%) 50% / 20px 20px',
+                      background: 'repeating-conic-gradient(var(--surface-light) 0% 25%, var(--surface-alt) 0% 50%) 50% / 20px 20px',
                       borderRadius: '0.5rem',
                       display: 'flex',
                       justifyContent: 'center',
                       alignItems: 'center',
-                      minHeight: '200px'
+                      minHeight: '150px'
                     }}>
                       <img
                         src={processedPreview}

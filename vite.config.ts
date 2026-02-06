@@ -34,7 +34,8 @@ export default defineConfig(({ mode }) => {
         rollupOptions: {
           output: {
             manualChunks: {
-              'tesseract': ['tesseract.js']
+              'tesseract': ['tesseract.js'],
+              'whisper': ['@huggingface/transformers']
             }
           }
         }

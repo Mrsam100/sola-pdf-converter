@@ -20,6 +20,7 @@ import EditPDF from './EditPDF';
 import RemoveBackground from './RemoveBackground';
 import ImageConverter from './ImageConverter';
 import OCRToText from './OCRToText';
+import AudioToText from './AudioToText';
 
 interface ToolDetailProps {
   tool: Tool;
@@ -65,6 +66,11 @@ const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
   // Route to OCR tool (client-side, no API key needed)
   if (tool.id === 'ocr-text') {
     return <OCRToText tool={tool} onBack={onBack} />;
+  }
+
+  // Route to Audio to Text (client-side, no API key needed)
+  if (tool.id === 'audio-text') {
+    return <AudioToText tool={tool} onBack={onBack} />;
   }
 
   // Route to image processing components

@@ -404,6 +404,119 @@
   cursor: grabbing;
 }
 
+/* ========================================
+   Audio to Text — Mobile Tabs & Recording
+   ======================================== */
+@media (max-width: 768px) {
+  .audio-tab-group {
+    padding: 0 1rem;
+  }
+
+  .audio-tab {
+    flex: 1;
+    justify-content: center;
+    padding: 0.75rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .recording-btn {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+/* ========================================
+   Mode Selector Buttons — Stack on Mobile
+   ======================================== */
+@media (max-width: 575px) {
+  /* Override inline minWidth on mode selector buttons */
+  .filter-btn {
+    min-width: 0 !important;
+  }
+}
+
+/* ========================================
+   Hero Shapes — Scale Down on Mobile
+   ======================================== */
+@media (max-width: 768px) {
+  .hero-shape-1 {
+    width: 150px !important;
+    height: 150px !important;
+    opacity: 0.3;
+  }
+
+  .hero-shape-2 {
+    width: 100px !important;
+    height: 100px !important;
+    opacity: 0.3;
+  }
+
+  .hero-shape-3 {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-shape-1,
+  .hero-shape-2,
+  .hero-shape-3 {
+    display: none !important;
+  }
+}
+
+/* ========================================
+   Hero — Fix 100vh on Mobile Browsers
+   ======================================== */
+@media (max-width: 768px) {
+  .hero {
+    min-height: calc(100vh - 80px);
+    min-height: calc(100dvh - 80px);
+  }
+}
+
+/* ========================================
+   Workspace Header & Step Progress — Mobile
+   ======================================== */
+@media (max-width: 575px) {
+  .workspace-header {
+    padding: 1.5rem 1rem;
+  }
+
+  .workspace-icon-large {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .step-progress .step-label {
+    font-size: 0.65rem;
+  }
+}
+
+/* ========================================
+   Config Dashboards — Mobile
+   ======================================== */
+@media (max-width: 768px) {
+  .workspace-card textarea {
+    min-height: 150px;
+    font-size: 0.8rem;
+  }
+}
+
+/* ========================================
+   Toast — Full Width on Small Phones
+   ======================================== */
+@media (max-width: 480px) {
+  .toast-container {
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    bottom: 0.5rem !important;
+  }
+
+  .toast {
+    font-size: 0.85rem;
+  }
+}
+
 /* Performance optimizations */
 @media (max-width: 768px) {
   /* Use GPU acceleration for smooth animations */
