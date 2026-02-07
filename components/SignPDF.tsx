@@ -56,8 +56,9 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
   const [hasDrawn, setHasDrawn] = useState(false);
 
   // Dashboard state
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const [pdfReady, setPdfReady] = useState(false);
   const pdfDocRef = useRef<any>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasAreaRef = useRef<HTMLDivElement>(null);
@@ -322,44 +323,10 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
 
   // ============ PDF RENDERING ============
 
-  const loadPdf = useCallback(async () => {
-    if (!file) return;
-    try {
-      const { pdfjsLib } = await import('../services/pdfConfig');
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      pdfDocRef.current = pdf;
-      setTotalPages(pdf.numPages);
-      setCurrentPage(1);
-
-      // Generate thumbnails
-      const thumbs = new Map<number, string>();
-      for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
-        const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale: 0.2 });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d')!;
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        thumbs.set(i, canvas.toDataURL());
-      }
-      setThumbnails(thumbs);
-    } catch {
-      toast.error('Failed to load PDF. The file may be corrupted.');
-    }
-  }, [file]);
-
-  useEffect(() => {
-    if (step === 'dashboard' && file) {
-      loadPdf();
-    }
-  }, [step, file, loadPdf]);
-
   const renderPage = useCallback(async (pageNum: number) => {
     const pdf = pdfDocRef.current;
     const canvas = canvasRef.current;
-    if (!pdf || !canvas) return;
+    if (!pdf || !canvas || pageNum < 1) return;
 
     try {
       const page = await pdf.getPage(pageNum);
@@ -390,11 +357,47 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
     }
   }, []);
 
+  const loadPdf = useCallback(async () => {
+    if (!file) return;
+    try {
+      const { pdfjsLib } = await import('../services/pdfConfig');
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      pdfDocRef.current = pdf;
+      setTotalPages(pdf.numPages);
+      setPdfReady(true);
+      setCurrentPage(1);
+
+      // Generate thumbnails
+      const thumbs = new Map<number, string>();
+      for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 0.2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d')!;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        thumbs.set(i, canvas.toDataURL());
+      }
+      setThumbnails(thumbs);
+    } catch {
+      toast.error('Failed to load PDF. The file may be corrupted.');
+    }
+  }, [file]);
+
   useEffect(() => {
-    if (step === 'dashboard' && pdfDocRef.current && currentPage > 0) {
+    if (step === 'dashboard' && file && !pdfReady) {
+      loadPdf();
+    }
+  }, [step, file, pdfReady, loadPdf]);
+
+  // Render page when currentPage changes OR when pdfReady becomes true
+  useEffect(() => {
+    if (step === 'dashboard' && pdfReady && currentPage > 0) {
       renderPage(currentPage);
     }
-  }, [step, currentPage, renderPage]);
+  }, [step, currentPage, pdfReady, renderPage]);
 
   // ============ FIELD PLACEMENT ============
 
@@ -645,6 +648,11 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
     setSelectedFieldId(null);
     setThumbnails(new Map());
     setErrorMsg('');
+    setPdfReady(false);
+    setCurrentPage(0);
+    setTotalPages(0);
+    setPageScales(new Map());
+    pdfDocRef.current = null;
   };
 
   const handleDownloadAgain = () => {
@@ -1264,18 +1272,29 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
             <div className="tool-panel-section">
               <div className="tool-panel-label">Required fields</div>
               <div
-                className="sign-field-item"
+                className="sign-field-item sign-field-item-with-preview"
                 draggable
                 onDragStart={() => setDragType('signature')}
                 onDragEnd={() => setDragType(null)}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 18, height: 18, flexShrink: 0 }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                </svg>
-                <span>Signature</span>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="var(--text-tertiary)" style={{ width: 14, height: 14, marginLeft: 'auto' }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
-                </svg>
+                <div className="sign-field-item-top">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 18, height: 18, flexShrink: 0 }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                  </svg>
+                  <span>Signature</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="var(--text-tertiary)" style={{ width: 14, height: 14, marginLeft: 'auto' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
+                  </svg>
+                </div>
+                {/* Signature preview */}
+                {(() => {
+                  const sigEntry = Array.from(signatures.values()).find(s => s.type === 'signature');
+                  return sigEntry ? (
+                    <div className="sign-field-preview">
+                      <img src={sigEntry.dataUrl} alt="Signature" draggable={false} />
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </div>
 
@@ -1283,18 +1302,29 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
             <div className="tool-panel-section">
               <div className="tool-panel-label">Optional fields</div>
               <div
-                className="sign-field-item"
+                className="sign-field-item sign-field-item-with-preview"
                 draggable
                 onDragStart={() => setDragType('initials')}
                 onDragEnd={() => setDragType(null)}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 18, height: 18, flexShrink: 0 }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-                </svg>
-                <span>Initials</span>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="var(--text-tertiary)" style={{ width: 14, height: 14, marginLeft: 'auto' }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
-                </svg>
+                <div className="sign-field-item-top">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 18, height: 18, flexShrink: 0 }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                  </svg>
+                  <span>Initials</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="var(--text-tertiary)" style={{ width: 14, height: 14, marginLeft: 'auto' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
+                  </svg>
+                </div>
+                {/* Initials preview */}
+                {(() => {
+                  const initEntry = Array.from(signatures.values()).find(s => s.type === 'initials');
+                  return initEntry ? (
+                    <div className="sign-field-preview">
+                      <img src={initEntry.dataUrl} alt="Initials" draggable={false} />
+                    </div>
+                  ) : null;
+                })()}
               </div>
               <div
                 className="sign-field-item"
@@ -1346,6 +1376,29 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
                 ))}
               </div>
             )}
+
+            {/* Sign button at bottom of panel */}
+            <div className="sign-panel-bottom">
+              <button
+                className="sign-btn-primary"
+                onClick={handleSign}
+                disabled={saving || placedFields.length === 0}
+              >
+                {saving ? (
+                  <>
+                    <span className="editor-spinner" />
+                    Signing...
+                  </>
+                ) : (
+                  <>
+                    Sign
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" style={{ width: 16, height: 16 }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                    </svg>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

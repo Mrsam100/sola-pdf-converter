@@ -22,6 +22,9 @@ import ImageConverter from './ImageConverter';
 import OCRToText from './OCRToText';
 import AudioToText from './AudioToText';
 import SignPDF from './SignPDF';
+import PDFToExcel from './PDFToExcel';
+import ExcelToPDF from './ExcelToPDF';
+import PDFToPowerPoint from './PDFToPowerPoint';
 
 interface ToolDetailProps {
   tool: Tool;
@@ -65,6 +68,15 @@ const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
   }
   if (tool.id === 'sign-pdf') {
     return <SignPDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'pdf-excel') {
+    return <PDFToExcel tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'excel-pdf') {
+    return <ExcelToPDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'pdf-ppt') {
+    return <PDFToPowerPoint tool={tool} onBack={onBack} />;
   }
 
   // Route to OCR tool (client-side, no API key needed)

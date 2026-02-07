@@ -26,31 +26,6 @@ export enum ProcessState {
   COMPLETED = 'completed'
 }
 
-export interface ChatMessage {
-  role: 'user' | 'model';
-  text: string;
-  timestamp: number;
-}
-
-export interface Product {
-  id: string;
-  name: string;
-  price: number;
-  description: string;
-  category: string;
-  imageUrl: string;
-  features: string[];
-}
-
-export interface JournalArticle {
-  id: string;
-  title: string;
-  excerpt: string;
-  content: string;
-  date: string;
-  image: string;
-}
-
 // ========================================
 // Configuration Types for PDF Tools
 // ========================================

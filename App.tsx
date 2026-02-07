@@ -2,7 +2,6 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
@@ -24,7 +23,6 @@ function App() {
   // Prevent accidental zoom on mobile
   usePreventZoom();
 
-  
   // Initialize monitoring and error handling
   useEffect(() => {
     setupGlobalErrorHandling();

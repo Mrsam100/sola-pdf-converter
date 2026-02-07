@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Tool, ProcessState } from '../types';
-import { pdfToWord, pdfToWordWithOCR, downloadWord } from '../services/pdfToWordService';
+import { pdfToWord, pdfToWordWithOCR, downloadWord, AbortSignal as AbortRef } from '../services/pdfToWordService';
 import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
 import { toast } from '../hooks/useToast';
 import { formatFileSize } from '../utils/formatFileSize';
@@ -35,17 +35,21 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [resultBlob, setResultBlob] = useState<Blob | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const abortRef = useRef<AbortRef>({ current: false });
+    const mountedRef = useRef(true);
 
     // Prevent tab suspension during processing
     const isProcessing = state === ProcessState.CONVERTING;
     useWakeLock(isProcessing);
-    const isPageVisible = usePageVisibility();
+    usePageVisibility();
 
+    // Cleanup on unmount — abort any in-progress conversion
     useEffect(() => {
-        if (isProcessing && !isPageVisible) {
-            console.log('Processing continues in background...');
-        }
-    }, [isProcessing, isPageVisible]);
+        return () => {
+            mountedRef.current = false;
+            abortRef.current.current = true;
+        };
+    }, []);
 
     const currentStep = state === ProcessState.IDLE || state === ProcessState.UPLOADING
         ? (file ? 0 : -1)
@@ -99,11 +103,32 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
         }
     }, [validateAndSetFile]);
 
+    const handleCancel = () => {
+        abortRef.current.current = true;
+        toast.info('Cancelling conversion...');
+    };
+
     const handleConvert = async () => {
         if (!file) {
             setErrorMsg('Please select a PDF file');
             return;
         }
+
+        // Magic byte validation: PDF files start with %PDF
+        try {
+            const headerBytes = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+            const header = String.fromCharCode(...headerBytes);
+            if (!header.startsWith('%PDF')) {
+                setErrorMsg('This file does not appear to be a valid PDF (invalid file header). Please select a real PDF file.');
+                return;
+            }
+        } catch {
+            setErrorMsg('Failed to read the file. Please try selecting it again.');
+            return;
+        }
+
+        // Reset abort signal for new conversion
+        abortRef.current = { current: false };
 
         setState(ProcessState.CONVERTING);
         setErrorMsg('');
@@ -115,15 +140,21 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
 
             if (mode === 'ocr') {
                 wordBlob = await pdfToWordWithOCR(file, (prog, status) => {
-                    setProgress(prog);
-                    setProgressStatus(status);
-                });
+                    if (mountedRef.current) {
+                        setProgress(prog);
+                        setProgressStatus(status);
+                    }
+                }, abortRef.current);
             } else {
                 wordBlob = await pdfToWord(file, (prog, status) => {
-                    setProgress(prog);
-                    setProgressStatus(status);
-                });
+                    if (mountedRef.current) {
+                        setProgress(prog);
+                        setProgressStatus(status);
+                    }
+                }, abortRef.current);
             }
+
+            if (!mountedRef.current) return;
 
             setResultBlob(wordBlob);
             setState(ProcessState.COMPLETED);
@@ -132,7 +163,16 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
             downloadWord(wordBlob, filename);
             toast.success('Document converted successfully!');
         } catch (err) {
-            console.error('PDF to Word conversion error:', err);
+            if (!mountedRef.current) return;
+
+            // User cancelled — silently reset
+            if (err instanceof Error && err.message.includes('cancelled')) {
+                setState(ProcessState.IDLE);
+                setProgress(0);
+                setProgressStatus('');
+                toast.info('Conversion cancelled');
+                return;
+            }
 
             let errorMessage = 'An unknown error occurred';
             if (err instanceof Error) {
@@ -152,6 +192,8 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                     errorMessage = 'Failed to render PDF pages. The PDF may be corrupted or in an unsupported format.';
                 } else if (err.message.includes('canvas')) {
                     errorMessage = 'Failed to process PDF. Your browser may not support this feature or is running low on memory.';
+                } else if (err.message.includes('limited to')) {
+                    errorMessage = err.message;
                 }
             }
 
@@ -326,7 +368,11 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                 ) : (
                                     <div
                                         className={`upload-zone${isDragging ? ' drag-over' : ''}`}
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-label="Upload PDF file"
                                         onClick={() => fileInputRef.current?.click()}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
                                         onDragOver={handleDragOver}
                                         onDragEnter={handleDragOver}
                                         onDragLeave={handleDragLeave}
@@ -368,9 +414,18 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
                                 </h3>
                                 <p className="workspace-desc">{progressStatus || 'Processing your document.'}</p>
                                 {mode === 'ocr' && (
-                                    <p style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)', marginTop: '1rem' }}>
-                                        OCR processing may take a few minutes depending on page count
-                                    </p>
+                                    <>
+                                        <p style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)', marginTop: '1rem' }}>
+                                            OCR processing may take a few minutes depending on page count
+                                        </p>
+                                        <button
+                                            onClick={handleCancel}
+                                            className="btn-secondary"
+                                            style={{ marginTop: '1rem' }}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </>
                                 )}
                             </div>
                         ) : (

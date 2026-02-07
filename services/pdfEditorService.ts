@@ -98,7 +98,7 @@ export interface EditorState {
 }
 
 /**
- * Extract text items from a PDF page with canvas coordinates
+ * Extract text items from a PDF file with canvas coordinates
  */
 export const extractTextItems = async (
     file: File,
@@ -106,10 +106,20 @@ export const extractTextItems = async (
     scale: number = 1.5
 ): Promise<DetectedTextItem[]> => {
     const { pdfjsLib } = await import('./pdfConfig');
-
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await (pdfjsLib.getDocument({ data: arrayBuffer })).promise;
-    const page = await pdf.getPage(pageNumber);
+    return extractTextItemsFromDoc(pdf, pageNumber, scale);
+};
+
+/**
+ * Extract text items from a cached PDF document with canvas coordinates
+ */
+export const extractTextItemsFromDoc = async (
+    doc: any,
+    pageNumber: number,
+    scale: number = 1.5
+): Promise<DetectedTextItem[]> => {
+    const page = await doc.getPage(pageNumber);
     const viewport = page.getViewport({ scale });
     const textContent = await page.getTextContent();
 
@@ -120,13 +130,8 @@ export const extractTextItems = async (
         if (!('str' in item) || !item.str.trim()) continue;
 
         const tx = item.transform;
-        // Font size from transform matrix
         const fontSize = Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1]);
-
-        // Convert PDF coordinates to canvas coordinates using viewport transform
         const [canvasX, canvasY] = viewport.convertToViewportPoint(tx[4], tx[5]);
-
-        // Width is estimated from string length and font size
         const estimatedWidth = item.width * scale;
         const estimatedHeight = fontSize * scale;
 
@@ -134,7 +139,7 @@ export const extractTextItems = async (
             id: `detected-${pageNumber}-${counter++}`,
             text: item.str,
             x: canvasX,
-            y: canvasY - estimatedHeight, // Adjust Y so it's top-left
+            y: canvasY - estimatedHeight,
             width: estimatedWidth,
             height: estimatedHeight,
             fontSize: fontSize * scale,
@@ -150,6 +155,7 @@ export const extractTextItems = async (
 
 /**
  * Apply whiteout elements to PDF (drawn FIRST, before other elements)
+ * Coordinates are in canvas space and divided by scale
  */
 export const applyWhiteoutElements = async (
     pdfDoc: PDFDocument,
@@ -162,7 +168,6 @@ export const applyWhiteoutElements = async (
         const page = pages[wo.pageNumber - 1];
         const { height } = page.getSize();
 
-        // Convert from canvas coords to PDF coords
         const pdfX = wo.x / scale;
         const pdfY = height - (wo.y / scale) - (wo.height / scale);
         const pdfW = wo.width / scale;
@@ -173,7 +178,7 @@ export const applyWhiteoutElements = async (
             y: pdfY,
             width: pdfW,
             height: pdfH,
-            color: rgb(1, 1, 1), // white
+            color: rgb(1, 1, 1),
         });
     }
 };
@@ -198,7 +203,7 @@ export const loadPDFForEditing = async (file: File): Promise<{
 };
 
 /**
- * Render PDF page to canvas
+ * Render PDF page to canvas (parses file each time — prefer renderPDFPageFromDoc)
  */
 export const renderPDFPage = async (
     file: File,
@@ -206,12 +211,21 @@ export const renderPDFPage = async (
     scale: number = 1.5
 ): Promise<{ canvas: HTMLCanvasElement; width: number; height: number }> => {
     const { pdfjsLib } = await import('./pdfConfig');
-
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdf = await loadingTask.promise;
+    return renderPDFPageFromDoc(pdf, pageNumber, scale);
+};
 
-    const page = await pdf.getPage(pageNumber);
+/**
+ * Render PDF page to canvas from a cached PDFDocumentProxy
+ */
+export const renderPDFPageFromDoc = async (
+    doc: any,
+    pageNumber: number,
+    scale: number = 1.5
+): Promise<{ canvas: HTMLCanvasElement; width: number; height: number }> => {
+    const page = await doc.getPage(pageNumber);
     const viewport = page.getViewport({ scale });
 
     const canvas = document.createElement('canvas');
@@ -227,7 +241,6 @@ export const renderPDFPage = async (
     await page.render({
         canvasContext: context,
         viewport: viewport,
-        canvas: canvas
     }).promise;
 
     return {
@@ -239,10 +252,12 @@ export const renderPDFPage = async (
 
 /**
  * Apply text elements to PDF
+ * All coordinates stored in canvas space — divided by scale for PDF embedding
  */
 export const applyTextElements = async (
     pdfDoc: PDFDocument,
-    texts: TextElement[]
+    texts: TextElement[],
+    scale: number = 1.5
 ): Promise<void> => {
     const pages = pdfDoc.getPages();
 
@@ -250,10 +265,8 @@ export const applyTextElements = async (
         const page = pages[textEl.pageNumber - 1];
         const { height } = page.getSize();
 
-        // Convert hex color to RGB
         const color = hexToRgb(textEl.color);
 
-        // Get font
         let font;
         if (textEl.fontFamily === 'Courier') {
             font = await pdfDoc.embedFont(StandardFonts.Courier);
@@ -263,11 +276,12 @@ export const applyTextElements = async (
             font = await pdfDoc.embedFont(StandardFonts.Helvetica);
         }
 
-        // Draw text (flip Y coordinate)
+        const pdfFontSize = textEl.fontSize / scale;
+
         page.drawText(textEl.text, {
-            x: textEl.x,
-            y: height - textEl.y - textEl.fontSize,
-            size: textEl.fontSize,
+            x: textEl.x / scale,
+            y: height - (textEl.y / scale) - pdfFontSize,
+            size: pdfFontSize,
             font: font,
             color: rgb(color.r, color.g, color.b),
         });
@@ -276,10 +290,12 @@ export const applyTextElements = async (
 
 /**
  * Apply image elements to PDF
+ * All coordinates stored in canvas space — divided by scale for PDF embedding
  */
 export const applyImageElements = async (
     pdfDoc: PDFDocument,
-    images: ImageElement[]
+    images: ImageElement[],
+    scale: number = 1.5
 ): Promise<void> => {
     const pages = pdfDoc.getPages();
 
@@ -287,38 +303,36 @@ export const applyImageElements = async (
         const page = pages[imgEl.pageNumber - 1];
         const { height } = page.getSize();
 
-        try {
-            // Determine image type from base64
-            let embeddedImage;
-            if (imgEl.imageData.includes('image/png')) {
-                const imageBytes = base64ToArrayBuffer(imgEl.imageData.split(',')[1]);
-                embeddedImage = await pdfDoc.embedPng(imageBytes);
-            } else {
-                const imageBytes = base64ToArrayBuffer(imgEl.imageData.split(',')[1]);
-                embeddedImage = await pdfDoc.embedJpg(imageBytes);
-            }
-
-            // Draw image (flip Y coordinate)
-            page.drawImage(embeddedImage, {
-                x: imgEl.x,
-                y: height - imgEl.y - imgEl.height,
-                width: imgEl.width,
-                height: imgEl.height,
-                rotate: degrees(imgEl.rotation),
-                opacity: imgEl.opacity,
-            });
-        } catch (error) {
-            console.error('Failed to embed image:', error);
+        let embeddedImage;
+        if (imgEl.imageData.includes('image/png')) {
+            const imageBytes = base64ToArrayBuffer(imgEl.imageData.split(',')[1]);
+            embeddedImage = await pdfDoc.embedPng(imageBytes);
+        } else if (imgEl.imageData.includes('image/jpeg') || imgEl.imageData.includes('image/jpg')) {
+            const imageBytes = base64ToArrayBuffer(imgEl.imageData.split(',')[1]);
+            embeddedImage = await pdfDoc.embedJpg(imageBytes);
+        } else {
+            throw new Error('Unsupported image format. Only PNG and JPEG images can be embedded in PDF.');
         }
+
+        page.drawImage(embeddedImage, {
+            x: imgEl.x / scale,
+            y: height - (imgEl.y / scale) - (imgEl.height / scale),
+            width: imgEl.width / scale,
+            height: imgEl.height / scale,
+            rotate: degrees(imgEl.rotation),
+            opacity: imgEl.opacity,
+        });
     }
 };
 
 /**
  * Apply shape elements to PDF
+ * All coordinates stored in canvas space — divided by scale for PDF embedding
  */
 export const applyShapeElements = async (
     pdfDoc: PDFDocument,
-    shapes: ShapeElement[]
+    shapes: ShapeElement[],
+    scale: number = 1.5
 ): Promise<void> => {
     const pages = pdfDoc.getPages();
 
@@ -330,30 +344,30 @@ export const applyShapeElements = async (
         if (shape.type === 'rectangle') {
             const fill = shape.fillColor ? hexToRgb(shape.fillColor) : undefined;
             page.drawRectangle({
-                x: shape.x,
-                y: height - shape.y - shape.height,
-                width: shape.width,
-                height: shape.height,
+                x: shape.x / scale,
+                y: height - (shape.y / scale) - (shape.height / scale),
+                width: shape.width / scale,
+                height: shape.height / scale,
                 borderColor: rgb(color.r, color.g, color.b),
-                borderWidth: shape.strokeWidth,
+                borderWidth: shape.strokeWidth / scale,
                 color: fill ? rgb(fill.r, fill.g, fill.b) : undefined,
             });
         } else if (shape.type === 'circle') {
             const fill = shape.fillColor ? hexToRgb(shape.fillColor) : undefined;
             page.drawEllipse({
-                x: shape.x + shape.width / 2,
-                y: height - shape.y - shape.height / 2,
-                xScale: shape.width / 2,
-                yScale: shape.height / 2,
+                x: (shape.x + shape.width / 2) / scale,
+                y: height - (shape.y + shape.height / 2) / scale,
+                xScale: (shape.width / 2) / scale,
+                yScale: (shape.height / 2) / scale,
                 borderColor: rgb(color.r, color.g, color.b),
-                borderWidth: shape.strokeWidth,
+                borderWidth: shape.strokeWidth / scale,
                 color: fill ? rgb(fill.r, fill.g, fill.b) : undefined,
             });
         } else if (shape.type === 'line') {
             page.drawLine({
-                start: { x: shape.x, y: height - shape.y },
-                end: { x: shape.x + shape.width, y: height - shape.y - shape.height },
-                thickness: shape.strokeWidth,
+                start: { x: shape.x / scale, y: height - shape.y / scale },
+                end: { x: (shape.x + shape.width) / scale, y: height - (shape.y + shape.height) / scale },
+                thickness: shape.strokeWidth / scale,
                 color: rgb(color.r, color.g, color.b),
             });
         }
@@ -362,10 +376,12 @@ export const applyShapeElements = async (
 
 /**
  * Apply annotation elements to PDF
+ * All coordinates stored in canvas space — divided by scale for PDF embedding
  */
 export const applyAnnotationElements = async (
     pdfDoc: PDFDocument,
-    annotations: AnnotationElement[]
+    annotations: AnnotationElement[],
+    scale: number = 1.5
 ): Promise<void> => {
     const pages = pdfDoc.getPages();
 
@@ -376,22 +392,22 @@ export const applyAnnotationElements = async (
 
         if (annotation.type === 'highlight') {
             page.drawRectangle({
-                x: annotation.x,
-                y: height - annotation.y - annotation.height,
-                width: annotation.width,
-                height: annotation.height,
+                x: annotation.x / scale,
+                y: height - (annotation.y / scale) - (annotation.height / scale),
+                width: annotation.width / scale,
+                height: annotation.height / scale,
                 color: rgb(color.r, color.g, color.b),
                 opacity: 0.3,
             });
         } else if (annotation.type === 'strikethrough' || annotation.type === 'underline') {
             const y = annotation.type === 'strikethrough'
-                ? height - annotation.y - annotation.height / 2
-                : height - annotation.y - annotation.height;
+                ? height - (annotation.y + annotation.height / 2) / scale
+                : height - (annotation.y + annotation.height) / scale;
 
             page.drawLine({
-                start: { x: annotation.x, y },
-                end: { x: annotation.x + annotation.width, y },
-                thickness: 2,
+                start: { x: annotation.x / scale, y },
+                end: { x: (annotation.x + annotation.width) / scale, y },
+                thickness: 2 / scale,
                 color: rgb(color.r, color.g, color.b),
             });
         }
@@ -400,10 +416,12 @@ export const applyAnnotationElements = async (
 
 /**
  * Apply drawing paths to PDF
+ * All coordinates stored in canvas space — divided by scale for PDF embedding
  */
 export const applyDrawingPaths = async (
     pdfDoc: PDFDocument,
-    drawings: DrawingPath[]
+    drawings: DrawingPath[],
+    scale: number = 1.5
 ): Promise<void> => {
     const pages = pdfDoc.getPages();
 
@@ -412,15 +430,14 @@ export const applyDrawingPaths = async (
         const { height } = page.getSize();
         const color = hexToRgb(drawing.color);
 
-        // Draw each segment of the path
         for (let i = 0; i < drawing.points.length - 1; i++) {
             const start = drawing.points[i];
             const end = drawing.points[i + 1];
 
             page.drawLine({
-                start: { x: start.x, y: height - start.y },
-                end: { x: end.x, y: height - end.y },
-                thickness: drawing.width,
+                start: { x: start.x / scale, y: height - start.y / scale },
+                end: { x: end.x / scale, y: height - end.y / scale },
+                thickness: drawing.width / scale,
                 color: rgb(color.r, color.g, color.b),
             });
         }
@@ -429,6 +446,7 @@ export const applyDrawingPaths = async (
 
 /**
  * Save edited PDF — whiteouts applied first, then all other elements
+ * All element coordinates are in canvas space and will be converted to PDF space
  */
 export const saveEditedPDF = async (
     file: File,
@@ -443,14 +461,13 @@ export const saveEditedPDF = async (
         await applyWhiteoutElements(pdfDoc, editorState.whiteouts, scale);
     }
 
-    // Then overlay new content
-    await applyTextElements(pdfDoc, editorState.texts);
-    await applyImageElements(pdfDoc, editorState.images);
-    await applyShapeElements(pdfDoc, editorState.shapes);
-    await applyAnnotationElements(pdfDoc, editorState.annotations);
-    await applyDrawingPaths(pdfDoc, editorState.drawings);
+    // Then overlay new content — pass scale for coordinate conversion
+    await applyTextElements(pdfDoc, editorState.texts, scale);
+    await applyImageElements(pdfDoc, editorState.images, scale);
+    await applyShapeElements(pdfDoc, editorState.shapes, scale);
+    await applyAnnotationElements(pdfDoc, editorState.annotations, scale);
+    await applyDrawingPaths(pdfDoc, editorState.drawings, scale);
 
-    // Save the modified PDF
     const pdfBytes = await pdfDoc.save();
     return pdfBytes;
 };

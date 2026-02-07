@@ -3,16 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Tool, ProcessState } from '../types';
-import { wordToPDF, downloadPDF } from '../services/wordToPdfService';
+import { pdfToPowerPoint, downloadPPTX, AbortSignal as AbortRef } from '../services/pdfToPowerPointService';
 import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
 import { toast } from '../hooks/useToast';
 import { formatFileSize } from '../utils/formatFileSize';
 import BackButton from './BackButton';
 import StepProgress from './StepProgress';
 
-interface WordToPDFProps {
+interface PDFToPowerPointProps {
     tool: Tool;
     onBack: () => void;
 }
@@ -23,9 +23,9 @@ const STEPS = [
     { label: 'Complete' },
 ];
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
-const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
+const PDFToPowerPoint: React.FC<PDFToPowerPointProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
     const [file, setFile] = useState<File | null>(null);
     const [progress, setProgress] = useState<number>(0);
@@ -34,30 +34,33 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [resultBlob, setResultBlob] = useState<Uint8Array | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const abortRef = useRef<AbortRef>({ current: false });
+    const mountedRef = useRef(true);
 
-    // Prevent tab suspension during processing
     const isProcessing = state === ProcessState.CONVERTING;
     useWakeLock(isProcessing);
     usePageVisibility();
+
+    useEffect(() => {
+        return () => {
+            mountedRef.current = false;
+            abortRef.current.current = true;
+        };
+    }, []);
 
     const currentStep = state === ProcessState.IDLE || state === ProcessState.UPLOADING
         ? (file ? 0 : -1)
         : state === ProcessState.CONVERTING ? 1 : 2;
 
     const validateAndSetFile = useCallback((selectedFile: File) => {
-        // Validate file type
-        if (!selectedFile.name.toLowerCase().endsWith('.docx') &&
-            !selectedFile.type.includes('wordprocessingml')) {
-            setErrorMsg('Please select a Word document (.docx file). .doc files are not supported.');
+        if (selectedFile.type !== 'application/pdf' && !selectedFile.name.toLowerCase().endsWith('.pdf')) {
+            setErrorMsg('Please select a valid PDF file.');
             return;
         }
-
-        // Validate file size
         if (selectedFile.size > MAX_FILE_SIZE) {
-            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 25MB.`);
+            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 50MB.`);
             return;
         }
-
         setFile(selectedFile);
         setState(ProcessState.IDLE);
         setErrorMsg('');
@@ -67,45 +70,24 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
     }, []);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            validateAndSetFile(e.target.files[0]);
-        }
+        if (e.target.files?.[0]) validateAndSetFile(e.target.files[0]);
     };
 
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(true);
-    }, []);
-
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-    }, []);
-
+    const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }, []);
+    const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }, []);
     const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            validateAndSetFile(e.dataTransfer.files[0]);
-        }
+        e.preventDefault(); e.stopPropagation(); setIsDragging(false);
+        if (e.dataTransfer.files?.[0]) validateAndSetFile(e.dataTransfer.files[0]);
     }, [validateAndSetFile]);
 
     const handleConvert = async () => {
-        if (!file) {
-            setErrorMsg('Please select a Word document');
-            return;
-        }
+        if (!file) { setErrorMsg('Please select a PDF file'); return; }
 
-        // Magic byte validation: .docx files are ZIP archives starting with PK\x03\x04
+        // Magic byte validation
         try {
-            const headerBytes = new Uint8Array(await file.slice(0, 4).arrayBuffer());
-            if (headerBytes[0] !== 0x50 || headerBytes[1] !== 0x4B ||
-                headerBytes[2] !== 0x03 || headerBytes[3] !== 0x04) {
-                setErrorMsg('This file does not appear to be a valid Word document (invalid file header). Please select a .docx file.');
+            const header = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+            if (String.fromCharCode(...header).indexOf('%PDF') !== 0) {
+                setErrorMsg('This file does not appear to be a valid PDF (invalid file header).');
                 return;
             }
         } catch {
@@ -113,36 +95,42 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
             return;
         }
 
+        abortRef.current = { current: false };
         setState(ProcessState.CONVERTING);
         setErrorMsg('');
         setProgress(0);
         setResultBlob(null);
 
         try {
-            const pdfBytes = await wordToPDF(file, (prog, status) => {
-                setProgress(prog);
-                setProgressStatus(status);
-            });
+            const pptxData = await pdfToPowerPoint(file, (prog, status) => {
+                if (mountedRef.current) { setProgress(prog); setProgressStatus(status); }
+            }, abortRef.current);
 
-            setResultBlob(pdfBytes);
+            if (!mountedRef.current) return;
+
+            setResultBlob(pptxData);
             setState(ProcessState.COMPLETED);
-
-            downloadPDF(pdfBytes, file.name);
-            toast.success('Document converted successfully!');
+            downloadPPTX(pptxData, file.name);
+            toast.success('PDF converted to PowerPoint successfully!');
         } catch (err) {
+            if (!mountedRef.current) return;
+            if (err instanceof Error && err.message.includes('cancelled')) {
+                setState(ProcessState.IDLE);
+                setProgress(0);
+                setProgressStatus('');
+                toast.info('Conversion cancelled');
+                return;
+            }
+
             let errorMessage = 'An unknown error occurred';
             if (err instanceof Error) {
                 errorMessage = err.message;
-
-                if (err.message.includes('WinAnsi') || err.message.includes('encode')) {
-                    errorMessage = 'This document contains unsupported characters. The conversion will skip those characters.';
-                } else if (err.message.includes('mammoth') || err.message.includes('parse')) {
-                    errorMessage = 'Failed to parse the Word document. The file may be corrupted or in an unsupported format.';
-                } else if (err.message.includes('arrayBuffer') || err.message.includes('read')) {
-                    errorMessage = 'Failed to read the file. Please try selecting it again.';
+                if (err.message.includes('password') || err.message.includes('encrypted')) {
+                    errorMessage = 'This PDF is password-protected. Please unlock it first using the Unlock PDF tool.';
+                } else if (err.message.includes('Invalid PDF')) {
+                    errorMessage = 'The file appears to be corrupted or is not a valid PDF.';
                 }
             }
-
             setErrorMsg(errorMessage);
             toast.error('Conversion failed');
             setState(ProcessState.IDLE);
@@ -151,9 +139,11 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
         }
     };
 
+    const handleCancel = () => { abortRef.current.current = true; toast.info('Cancelling...'); };
+
     const handleDownloadAgain = () => {
         if (!resultBlob || !file) return;
-        downloadPDF(resultBlob, file.name);
+        downloadPPTX(resultBlob, file.name);
         toast.success('Download started!');
     };
 
@@ -182,7 +172,6 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
                         <p className="workspace-desc">{tool.description}</p>
                     </div>
 
-                    {/* Step Progress */}
                     <div style={{ padding: '1.5rem 1.5rem 0' }}>
                         <StepProgress steps={STEPS} currentStep={currentStep} />
                     </div>
@@ -195,21 +184,7 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
                                 </svg>
                                 <div style={{ flex: 1, textAlign: 'left' }}>
                                     {errorMsg}
-                                    <button
-                                        onClick={handleConvert}
-                                        style={{
-                                            display: 'block',
-                                            marginTop: '0.5rem',
-                                            fontSize: '0.8rem',
-                                            fontWeight: 600,
-                                            color: 'var(--accent)',
-                                            textDecoration: 'underline',
-                                            background: 'none',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            padding: 0,
-                                        }}
-                                    >
+                                    <button onClick={handleConvert} style={{ display: 'block', marginTop: '0.5rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent)', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                                         Try Again
                                     </button>
                                 </div>
@@ -223,80 +198,53 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
                                         <div style={{ padding: '1.5rem', background: 'var(--surface-light)', borderRadius: 'var(--radius-md)', marginBottom: '2rem' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-lg" style={{ color: 'var(--text-primary)' }}>
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                                                 </svg>
                                                 <div style={{ flex: 1 }}>
-                                                    <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
-                                                        {file.name}
-                                                    </div>
+                                                    <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{file.name}</div>
                                                     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                                                         <span className="file-size">{formatFileSize(file.size)}</span>
-                                                        <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>Ready to convert to PDF</span>
+                                                        <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>Ready to convert</span>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <div style={{
-                                                padding: '1rem',
-                                                background: 'var(--info-bg)',
-                                                border: '1px solid color-mix(in srgb, var(--info) 40%, transparent)',
-                                                borderRadius: 'var(--radius-sm)',
-                                            }}>
+                                            <div style={{ padding: '1rem', background: 'var(--info-bg)', border: '1px solid color-mix(in srgb, var(--info) 40%, transparent)', borderRadius: 'var(--radius-sm)' }}>
                                                 <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
-                                                    <strong>What to expect:</strong>
+                                                    <strong>How it works:</strong>
                                                     <ul style={{ margin: '0.5rem 0 0 1.5rem', paddingLeft: 0 }}>
-                                                        <li>Text content will be preserved</li>
-                                                        <li>Bold and italic formatting maintained</li>
-                                                        <li>Headings and lists preserved</li>
-                                                        <li>A4 page size with proper margins</li>
+                                                        <li>Each PDF page becomes a PowerPoint slide</li>
+                                                        <li>Pages are rendered as high-quality images</li>
+                                                        <li>Slide dimensions match the PDF page size</li>
+                                                        <li>All processing happens in your browser</li>
                                                     </ul>
-                                                    <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                                                        Note: Only .docx files are supported (Word 2007+)
-                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <button onClick={handleConvert} className="btn-action" style={{ flex: 1, maxWidth: 'none', marginTop: 0 }}>
-                                                Convert to PDF
-                                            </button>
-                                            <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>
-                                                Select Different Document
-                                            </button>
+                                            <button onClick={handleConvert} className="btn-action" style={{ flex: 1, maxWidth: 'none', marginTop: 0 }}>Convert to PowerPoint</button>
+                                            <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>Select Different PDF</button>
                                         </div>
                                     </div>
                                 ) : (
                                     <div
                                         className={`upload-zone${isDragging ? ' drag-over' : ''}`}
-                                        role="button"
-                                        tabIndex={0}
-                                        aria-label="Upload Word document"
+                                        role="button" tabIndex={0} aria-label="Upload PDF file"
                                         onClick={() => fileInputRef.current?.click()}
                                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
-                                        onDragOver={handleDragOver}
-                                        onDragEnter={handleDragOver}
-                                        onDragLeave={handleDragLeave}
-                                        onDrop={handleDrop}
+                                        onDragOver={handleDragOver} onDragEnter={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
                                     >
-                                        <input
-                                            type="file"
-                                            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                            ref={fileInputRef}
-                                            onChange={handleFileSelect}
-                                            style={{ display: 'none' }}
-                                        />
+                                        <input type="file" accept=".pdf,application/pdf" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} />
                                         <div className="upload-icon-wrapper">
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-lg">
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                                             </svg>
                                         </div>
                                         <span style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-                                            {isDragging ? 'Drop your Word document here' : 'Select a Word document to convert to PDF'}
+                                            {isDragging ? 'Drop your PDF here' : 'Select a PDF to convert to slides'}
                                         </span>
-                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>
-                                            Click to browse or drag and drop (.docx files only)
-                                        </span>
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>Click to browse or drag and drop</span>
                                     </div>
                                 )}
                             </>
@@ -306,12 +254,11 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
                                     <div className="loader">
                                         <div className="loader-bar" style={{ width: `${progress}%`, animation: progress > 0 ? 'none' : undefined }}></div>
                                     </div>
-                                    <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                                        {Math.round(progress)}%
-                                    </div>
+                                    <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{Math.round(progress)}%</div>
                                 </div>
-                                <h3 className="workspace-title" style={{ fontSize: '1.5rem' }}>Converting to PDF...</h3>
+                                <h3 className="workspace-title" style={{ fontSize: '1.5rem' }}>Converting to PowerPoint...</h3>
                                 <p className="workspace-desc">{progressStatus || 'Processing your document.'}</p>
+                                <button onClick={handleCancel} className="btn-secondary" style={{ marginTop: '1rem' }}>Cancel</button>
                             </div>
                         ) : (
                             <div className="result-area animate-fade-in">
@@ -323,33 +270,20 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
                                 <h3 className="workspace-title" style={{ fontSize: '1.5rem' }}>Conversion Complete!</h3>
 
                                 {file && resultBlob && (
-                                    <div style={{
-                                        padding: '1rem 1.5rem',
-                                        background: 'var(--success-bg)',
-                                        borderRadius: 'var(--radius-md)',
-                                        margin: '1.5rem auto',
-                                        maxWidth: '360px',
-                                        fontSize: '0.875rem',
-                                    }}>
+                                    <div style={{ padding: '1rem 1.5rem', background: 'var(--success-bg)', borderRadius: 'var(--radius-md)', margin: '1.5rem auto', maxWidth: '360px', fontSize: '0.875rem' }}>
                                         <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
-                                            {file.name.replace(/\.docx?$/i, '.pdf')}
+                                            {file.name.replace(/\.pdf$/i, '.pptx')}
                                         </div>
                                         <div style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
-                                            {formatFileSize(resultBlob.length)} &bull; PDF Document
+                                            {formatFileSize(resultBlob.length)} &bull; PowerPoint Presentation (.pptx)
                                         </div>
                                     </div>
                                 )}
 
-                                <p className="workspace-desc" style={{ marginBottom: '2rem' }}>
-                                    Your file has been downloaded. Check your downloads folder.
-                                </p>
+                                <p className="workspace-desc" style={{ marginBottom: '2rem' }}>Your file has been downloaded. Check your downloads folder.</p>
                                 <div className="action-row">
-                                    <button onClick={handleDownloadAgain} className="btn-secondary btn-primary-alt">
-                                        Download Again
-                                    </button>
-                                    <button onClick={handleReset} className="btn-secondary">
-                                        Convert Another Document
-                                    </button>
+                                    <button onClick={handleDownloadAgain} className="btn-secondary btn-primary-alt">Download Again</button>
+                                    <button onClick={handleReset} className="btn-secondary">Convert Another PDF</button>
                                 </div>
                             </div>
                         )}
@@ -367,4 +301,4 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
     );
 };
 
-export default WordToPDF;
+export default PDFToPowerPoint;

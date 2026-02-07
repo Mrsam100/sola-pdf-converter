@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import { Tool, Product, JournalArticle } from './types';
+import { Tool } from './types';
 
 export const BRAND_NAME = 'Sola';
 export const STUDIO_NAME = 'Gregorious Creative Studios';
@@ -168,44 +168,4 @@ export const TOOLS: Tool[] = [
     category: 'Text',
     icon: 'M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z'
   },
-];
-
-export const PRODUCTS: Product[] = [
-    {
-        id: 'aura-stone',
-        name: 'Aura Stone',
-        price: 120,
-        description: 'A hand-carved sandstone sphere designed for tactile grounding and focus.',
-        category: 'Objects',
-        imageUrl: 'https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&q=80&w=800',
-        features: ['Natural Sandstone', 'Hand Polished', 'Unique Patina']
-    },
-    {
-        id: 'aura-light',
-        name: 'Aura Light',
-        price: 250,
-        description: 'A ambient light source that mimics the circadian rhythm of the sun.',
-        category: 'Electronics',
-        imageUrl: 'https://images.unsplash.com/photo-1513506003011-3b032f7f5e5c?auto=format&fit=crop&q=80&w=800',
-        features: ['Warm LED', 'Automatic Dimming', 'No Blue Light']
-    }
-];
-
-export const JOURNAL_ARTICLES: JournalArticle[] = [
-    {
-        id: 'silence',
-        title: 'The Art of Silence',
-        excerpt: 'In a world of constant noise, finding silence is an act of rebellion. We explore how minimal design can quiet the mind.',
-        date: 'Oct 12, 2025',
-        image: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=800',
-        content: 'Content placeholder...'
-    },
-    {
-        id: 'materials',
-        title: 'Materials that Matter',
-        excerpt: 'Why we choose sandstone, aluminum, and organic cotton. A deep dive into our sourcing philosophy.',
-        date: 'Sep 28, 2025',
-        image: 'https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&q=80&w=800',
-        content: 'Content placeholder...'
-    }
 ];

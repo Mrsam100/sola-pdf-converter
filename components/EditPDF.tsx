@@ -14,8 +14,8 @@ import {
     DrawingPath,
     WhiteoutElement,
     DetectedTextItem,
-    renderPDFPage,
-    extractTextItems,
+    renderPDFPageFromDoc,
+    extractTextItemsFromDoc,
     saveEditedPDF
 } from '../services/pdfEditorService';
 import { downloadPDF } from '../services/pdfService';
@@ -90,9 +90,20 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
     const editOverlayRef = useRef<HTMLDivElement>(null);
     const inlineInputRef = useRef<HTMLTextAreaElement>(null);
     const imageUploadRef = useRef<HTMLInputElement>(null);
+    const pdfDocProxyRef = useRef<any>(null);
 
     // Wake lock during save
     useWakeLock(saving);
+
+    // Cleanup PDF document on unmount to prevent memory leaks
+    useEffect(() => {
+        return () => {
+            if (pdfDocProxyRef.current) {
+                pdfDocProxyRef.current.destroy();
+                pdfDocProxyRef.current = null;
+            }
+        };
+    }, []);
 
     const scale = zoom / 100 * 1.5;
     const hasUnsavedChanges = history.length > 0;
@@ -177,10 +188,20 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
     const loadPDF = async (file: File) => {
         setLoading(true);
         try {
+            // Magic byte validation: PDF files start with %PDF
+            const headerBytes = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+            const header = String.fromCharCode(...headerBytes);
+            if (!header.startsWith('%PDF')) {
+                setErrorMsg('File does not appear to be a valid PDF (invalid header).');
+                setLoading(false);
+                return;
+            }
+
             const { pdfjsLib } = await import('../services/pdfConfig');
             const ab = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
 
+            pdfDocProxyRef.current = pdf;
             setSelectedFile(file);
             setTotalPages(pdf.numPages);
             setCurrentPage(1);
@@ -189,7 +210,6 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
             setHistoryIndex(-1);
             setSelectedElementId(null);
         } catch (err) {
-            console.error('Failed to load PDF:', err);
             setErrorMsg('Failed to load PDF. The file may be corrupted or password-protected.');
         } finally {
             setLoading(false);
@@ -204,7 +224,8 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
         setPageLoading(true);
 
         try {
-            const { canvas, width, height } = await renderPDFPage(selectedFile, currentPage, scale);
+            if (!pdfDocProxyRef.current) return;
+            const { canvas, width, height } = await renderPDFPageFromDoc(pdfDocProxyRef.current, currentPage, scale);
             const target = canvasRef.current;
             target.width = width;
             target.height = height;
@@ -332,8 +353,8 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                     });
                 }
             }
-        } catch (err) {
-            console.error('Render error:', err);
+        } catch {
+            // Render failed — silently handled, page loading spinner will clear
         } finally {
             setPageLoading(false);
         }
@@ -343,16 +364,16 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
     // Text detection
     // ──────────────────────────────────
     const loadTextDetection = useCallback(async () => {
-        if (!selectedFile) return;
+        if (!selectedFile || !pdfDocProxyRef.current) return;
         try {
-            const items = await extractTextItems(selectedFile, currentPage, scale);
+            const items = await extractTextItemsFromDoc(pdfDocProxyRef.current, currentPage, scale);
             setDetectedTexts(prev => {
                 const next = new Map(prev);
                 next.set(currentPage, items);
                 return next;
             });
-        } catch (err) {
-            console.error('Text detection failed:', err);
+        } catch {
+            // Text detection failed — non-critical, silently handled
         }
     }, [selectedFile, currentPage, scale]);
 
@@ -649,11 +670,18 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
     // Hit detection for select mode
     // ──────────────────────────────────
     const findElementAtPoint = (px: number, py: number): { id: string; type: string; x: number; y: number } | null => {
-        // Check texts
+        // Check texts — use canvas measureText for accurate width
         for (const t of editorState.texts.filter(t => t.pageNumber === currentPage)) {
-            const w = t.text.length * t.fontSize * 0.6;
-            const h = t.fontSize;
-            if (px >= t.x && px <= t.x + w && py >= t.y && py <= t.y + h) {
+            const ctx = canvasRef.current?.getContext('2d');
+            let w: number;
+            if (ctx) {
+                ctx.font = `${t.fontSize}px ${t.fontFamily}`;
+                w = ctx.measureText(t.text).width;
+            } else {
+                w = t.text.length * t.fontSize * 0.55;
+            }
+            const h = t.fontSize * 1.2;
+            if (px >= t.x - 4 && px <= t.x + w + 4 && py >= t.y - 4 && py <= t.y + h + 4) {
                 return { id: t.id, type: 'text', x: t.x, y: t.y };
             }
         }
@@ -673,6 +701,21 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
         for (const a of editorState.annotations.filter(a => a.pageNumber === currentPage)) {
             if (px >= a.x && px <= a.x + a.width && py >= a.y && py <= a.y + a.height) {
                 return { id: a.id, type: 'annotation', x: a.x, y: a.y };
+            }
+        }
+        // Check drawings — bounding box hit test
+        for (const d of editorState.drawings.filter(d => d.pageNumber === currentPage)) {
+            if (d.points.length === 0) continue;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const p of d.points) {
+                minX = Math.min(minX, p.x);
+                minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x);
+                maxY = Math.max(maxY, p.y);
+            }
+            const pad = d.width / 2 + 6;
+            if (px >= minX - pad && px <= maxX + pad && py >= minY - pad && py <= maxY + pad) {
+                return { id: d.id, type: 'drawing', x: minX, y: minY };
             }
         }
         // Check whiteouts
@@ -721,7 +764,7 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                     x: detected.x,
                     y: detected.y,
                     text: editingTextValue,
-                    fontSize: detected.fontSize / scale, // Convert back for PDF coordinates
+                    fontSize: detected.fontSize, // Keep in canvas coords — service divides by scale
                     fontFamily: 'Helvetica',
                     color: detected.color,
                     bold: false, italic: false, underline: false,
@@ -755,10 +798,10 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
             const newText: TextElement = {
                 id: `text-${Date.now()}`,
                 pageNumber: currentPage,
-                x: newTextPos.x / scale, // Convert to PDF coords
-                y: newTextPos.y / scale,
+                x: newTextPos.x, // Canvas coords — service divides by scale on save
+                y: newTextPos.y,
                 text: editingTextValue,
-                fontSize: textSettings.fontSize,
+                fontSize: textSettings.fontSize * scale, // Canvas-scale fontSize
                 fontFamily: textSettings.fontFamily,
                 color: textSettings.color,
                 bold: false, italic: false, underline: false,
@@ -782,9 +825,9 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
         if (!file) return;
 
         // Validate image type
-        const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+        const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
         if (!validTypes.includes(file.type)) {
-            toast.error('Please select a PNG, JPEG, or WebP image.');
+            toast.error('Please select a PNG or JPEG image. WebP is not supported for PDF embedding.');
             return;
         }
         // Validate image size (max 10 MB)
@@ -799,7 +842,8 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
             const newImage: ImageElement = {
                 id: `img-${Date.now()}`,
                 pageNumber: currentPage,
-                x: 100, y: 100,
+                x: canvasRef.current ? canvasRef.current.width / 2 - 100 : 100,
+                y: canvasRef.current ? canvasRef.current.height / 2 - 100 : 100,
                 width: 200, height: 200,
                 rotation: 0, opacity: 1,
                 imageData,
@@ -824,8 +868,7 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
             const filename = selectedFile.name.replace('.pdf', '_edited.pdf');
             downloadPDF(pdfBytes, filename);
             toast.success('PDF saved successfully!');
-        } catch (err) {
-            console.error('Save error:', err);
+        } catch {
             toast.error('Failed to save PDF. Please try again.');
         } finally {
             setSaving(false);
@@ -864,6 +907,9 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
     // ──────────────────────────────────
     const goToPage = (page: number) => {
         if (page >= 1 && page <= totalPages) {
+            // Commit any pending text edit before switching pages
+            if (editingTextId) commitTextEdit();
+            if (newTextPos) commitNewText();
             setCurrentPage(page);
             setSelectedElementId(null);
             setEditingTextId(null);
@@ -1118,6 +1164,22 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                             onMouseUp={handleCanvasMouseUp}
                             onMouseLeave={() => {
                                 if (isInteracting) {
+                                    // Save drawing in progress instead of discarding
+                                    if (toolMode === 'draw' && currentDrawingPoints.length > 1) {
+                                        const points = [...currentDrawingPoints];
+                                        const newDrawing: DrawingPath = {
+                                            id: `draw-${Date.now()}`,
+                                            pageNumber: currentPage,
+                                            points,
+                                            color: drawSettings.color,
+                                            width: drawSettings.width,
+                                        };
+                                        pushCommand({
+                                            description: 'Add drawing',
+                                            execute: () => setEditorState(s => ({ ...s, drawings: [...s.drawings, newDrawing] })),
+                                            undo: () => setEditorState(s => ({ ...s, drawings: s.drawings.filter(d => d.id !== newDrawing.id) })),
+                                        });
+                                    }
                                     setIsInteracting(false);
                                     setInteractionStart(null);
                                     setCurrentDrawingPoints([]);
@@ -1215,11 +1277,11 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                                         position: 'absolute',
                                         left: newTextPos.x * scaleX,
                                         top: newTextPos.y * scaleY,
-                                        fontSize: textSettings.fontSize * scaleY,
+                                        fontSize: textSettings.fontSize * scale * scaleY,
                                         fontFamily: textSettings.fontFamily,
                                         color: textSettings.color,
                                         minWidth: 120,
-                                        minHeight: textSettings.fontSize * scaleY + 4,
+                                        minHeight: textSettings.fontSize * scale * scaleY + 4,
                                     }}
                                     value={editingTextValue}
                                     onChange={(e) => setEditingTextValue(e.target.value)}
@@ -1277,9 +1339,9 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                                     className={`editor-text-overlay ${selectedElementId === t.id ? 'selected' : ''}`}
                                     style={{
                                         position: 'absolute',
-                                        left: (t.x * scale) * scaleX,
-                                        top: (t.y * scale) * scaleY,
-                                        fontSize: t.fontSize * scale * scaleY,
+                                        left: t.x * scaleX,
+                                        top: t.y * scaleY,
+                                        fontSize: t.fontSize * scaleY,
                                         fontFamily: t.fontFamily,
                                         color: t.color,
                                         pointerEvents: toolMode === 'select' ? 'auto' : 'none',
@@ -1323,7 +1385,7 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                         <input
                             ref={imageUploadRef}
                             type="file"
-                            accept="image/*"
+                            accept="image/png,image/jpeg"
                             onChange={handleImageUpload}
                             style={{ display: 'none' }}
                         />
@@ -1406,19 +1468,32 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                             </div>
                             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
                                 <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Fill</label>
-                                <input
-                                    type="color"
-                                    value={shapeSettings.fillColor || '#ffffff'}
-                                    onChange={e => setShapeSettings(s => ({ ...s, fillColor: e.target.value }))}
-                                    className="tool-color"
-                                />
-                                <button
-                                    className="editor-btn"
-                                    style={{ fontSize: '0.7rem', padding: '2px 6px' }}
-                                    onClick={() => setShapeSettings(s => ({ ...s, fillColor: '' }))}
-                                >
-                                    No fill
-                                </button>
+                                {shapeSettings.fillColor ? (
+                                    <input
+                                        type="color"
+                                        value={shapeSettings.fillColor}
+                                        onChange={e => setShapeSettings(s => ({ ...s, fillColor: e.target.value }))}
+                                        className="tool-color"
+                                    />
+                                ) : (
+                                    <button
+                                        className="editor-btn"
+                                        style={{ fontSize: '0.7rem', padding: '2px 6px', border: '1px dashed var(--border-color)' }}
+                                        onClick={() => setShapeSettings(s => ({ ...s, fillColor: '#ffffff' }))}
+                                        title="Click to add fill color"
+                                    >
+                                        None
+                                    </button>
+                                )}
+                                {shapeSettings.fillColor && (
+                                    <button
+                                        className="editor-btn"
+                                        style={{ fontSize: '0.7rem', padding: '2px 6px' }}
+                                        onClick={() => setShapeSettings(s => ({ ...s, fillColor: '' }))}
+                                    >
+                                        No fill
+                                    </button>
+                                )}
                             </div>
                             <input
                                 type="range"

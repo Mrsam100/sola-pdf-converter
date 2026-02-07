@@ -15,6 +15,7 @@ import { PagePreview } from './PagePreview';
 
 interface SplitPdfConfigProps {
   file: File;
+  pageCount?: number;
   onConfigChange: (config: SplitPdfConfig) => void;
   onSplit: (config: SplitPdfConfig) => void;
   onCancel: () => void;
@@ -22,6 +23,7 @@ interface SplitPdfConfigProps {
 
 export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
   file,
+  pageCount: externalPageCount,
   onConfigChange,
   onSplit,
   onCancel,
@@ -29,22 +31,30 @@ export const SplitPdfConfig: React.FC<SplitPdfConfigProps> = ({
   const [config, setConfig] = useState<SplitPdfConfig>(() =>
     configService.loadConfig<SplitPdfConfig>('split-pdf')
   );
-  const [pageCount, setPageCount] = useState<number>(0);
+  const [pageCount, setPageCount] = useState<number>(externalPageCount || 0);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
 
   useEffect(() => {
+    // Skip loading if page count already provided by parent
+    if (externalPageCount && externalPageCount > 0) {
+      setPageCount(externalPageCount);
+      return;
+    }
+    let destroyed = false;
     const loadPageCount = async () => {
       try {
         const { pdfjsLib } = await import('../../services/pdfConfig');
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        setPageCount(pdf.numPages);
-      } catch (err) {
-        console.error('Failed to load PDF page count:', err);
+        if (!destroyed) setPageCount(pdf.numPages);
+        pdf.destroy();
+      } catch {
+        // Page count loading failed silently — parent should handle errors
       }
     };
     loadPageCount();
-  }, [file]);
+    return () => { destroyed = true; };
+  }, [file, externalPageCount]);
 
   // Parse page ranges and update selected pages dynamically
   const parsePageRanges = (ranges: string[], totalPages: number): number[] => {

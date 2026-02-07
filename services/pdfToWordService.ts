@@ -3,106 +3,165 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer } from 'docx';
+import { Document, Paragraph, TextRun, HeadingLevel, Packer, SectionType } from 'docx';
 import { createConfiguredWorker } from './tesseractConfig';
 
-/**
- * Extract text from PDF using pdf.js (Non-OCR mode)
- * This extracts selectable text from PDFs
- */
-export const extractTextFromPDF = async (file: File): Promise<{ text: string; pageCount: number }> => {
+// ── Constants ─────────────────────────────────────
+
+/** Maximum pages for OCR — prevents multi-hour freezes on large docs */
+const MAX_OCR_PAGES = 200;
+
+// ── Types ─────────────────────────────────────────
+
+interface PageData {
+    pageNumber: number;
+    paragraphs: string[]; // each paragraph is a block of text
+}
+
+export interface AbortSignal {
+    current: boolean;
+}
+
+// ── Text Extraction (Non-OCR) ─────────────────────
+
+export const extractTextFromPDF = async (
+    file: File,
+    abortSignal?: AbortSignal
+): Promise<{ pages: PageData[]; pageCount: number }> => {
     const { pdfjsLib } = await import('./pdfConfig');
 
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdf = await loadingTask.promise;
 
-    let fullText = '';
+    try {
+        const pages: PageData[] = [];
 
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            if (abortSignal?.current) {
+                throw new Error('Conversion cancelled');
+            }
 
-        // Extract text items preserving line structure using pdf.js position data
-        const items = textContent.items as any[];
-        let pageText = '';
-        let lastY: number | null = null;
+            const page = await pdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
 
-        for (const item of items) {
-            if (!item.str && !item.hasEOL) continue;
+            const items = textContent.items as any[];
+            const lines: string[] = [];
+            let currentLine = '';
+            let lastY: number | null = null;
+            let lastFontSize = 12; // default fallback
 
-            const currentY = item.transform ? item.transform[5] : null;
+            for (const item of items) {
+                if (!item.str && !item.hasEOL) continue;
 
-            // Detect line/paragraph breaks via vertical position change
-            if (lastY !== null && currentY !== null && item.str) {
-                const yDiff = Math.abs(lastY - currentY);
-                if (yDiff > 2) {
-                    // New line detected
-                    pageText += '\n';
-                } else if (pageText.length > 0 && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
-                    pageText += ' ';
+                const currentY = item.transform ? item.transform[5] : null;
+                const fontSize = item.transform ? Math.abs(item.transform[3]) : lastFontSize;
+                if (fontSize > 0) lastFontSize = fontSize;
+
+                if (lastY !== null && currentY !== null && item.str) {
+                    const yDiff = Math.abs(lastY - currentY);
+                    // Use font-size-relative threshold instead of hardcoded 2
+                    if (yDiff > lastFontSize * 0.5) {
+                        // New line detected — push current line
+                        if (currentLine.trim()) lines.push(currentLine.trim());
+                        currentLine = '';
+                    } else if (currentLine.length > 0 && !currentLine.endsWith(' ')) {
+                        currentLine += ' ';
+                    }
+                } else if (currentLine.length > 0 && item.str && !currentLine.endsWith(' ')) {
+                    currentLine += ' ';
                 }
-            } else if (pageText.length > 0 && item.str && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
-                pageText += ' ';
+
+                currentLine += item.str || '';
+                if (currentY !== null && item.str?.trim()) lastY = currentY;
+
+                if (item.hasEOL) {
+                    if (currentLine.trim()) lines.push(currentLine.trim());
+                    currentLine = '';
+                    lastY = null;
+                }
             }
 
-            pageText += item.str || '';
-            if (currentY !== null && item.str?.trim()) lastY = currentY;
+            // Push remaining text
+            if (currentLine.trim()) lines.push(currentLine.trim());
 
-            // pdf.js marks end-of-line items
-            if (item.hasEOL) {
-                pageText += '\n';
-                lastY = null;
+            // Group lines into paragraphs (consecutive lines become one paragraph,
+            // blank lines separate paragraphs)
+            const paragraphs: string[] = [];
+            let currentParagraph = '';
+
+            for (const line of lines) {
+                if (line.trim() === '') {
+                    if (currentParagraph.trim()) {
+                        paragraphs.push(currentParagraph.trim());
+                        currentParagraph = '';
+                    }
+                } else {
+                    if (currentParagraph) currentParagraph += ' ';
+                    currentParagraph += line;
+                }
             }
+            if (currentParagraph.trim()) {
+                paragraphs.push(currentParagraph.trim());
+            }
+
+            pages.push({ pageNumber: pageNum, paragraphs });
         }
 
-        fullText += `\n\n--- Page ${pageNum} ---\n\n${pageText.trim()}`;
+        return { pages, pageCount: pdf.numPages };
+    } finally {
+        pdf.destroy();
     }
-
-    return {
-        text: fullText.trim(),
-        pageCount: pdf.numPages
-    };
 };
 
-/**
- * Extract text from PDF using OCR (for scanned PDFs or images)
- * This performs optical character recognition on PDF pages
- */
+// ── OCR Extraction ────────────────────────────────
+
 export const extractTextWithOCR = async (
     file: File,
-    onProgress?: (progress: number, status: string) => void
-): Promise<{ text: string; pageCount: number }> => {
+    onProgress?: (progress: number, status: string) => void,
+    abortSignal?: AbortSignal
+): Promise<{ pages: PageData[]; pageCount: number }> => {
     let worker: any = null;
+    const { pdfjsLib } = await import('./pdfConfig');
+
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
 
     try {
-        // Load PDF first to render pages
-        const { pdfjsLib } = await import('./pdfConfig');
+        // Enforce page limit for OCR
+        if (pdf.numPages > MAX_OCR_PAGES) {
+            throw new Error(
+                `This PDF has ${pdf.numPages} pages. OCR is limited to ${MAX_OCR_PAGES} pages ` +
+                `to prevent browser freezes. For large documents, try the non-OCR mode first.`
+            );
+        }
 
-        const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-        const pdf = await loadingTask.promise;
-
-        // Initialize Tesseract worker
         onProgress?.(5, 'Initializing OCR engine...');
 
         try {
             worker = await createConfiguredWorker('eng');
-        } catch (workerError) {
-            console.error('Failed to initialize OCR worker:', workerError);
-            throw new Error('Failed to initialize OCR engine. Please check your internet connection and try again.');
+        } catch {
+            throw new Error(
+                'Failed to initialize OCR engine. Please check your internet connection and try again.'
+            );
         }
 
-        let fullText = '';
+        const pages: PageData[] = [];
 
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            // Check abort before each page
+            if (abortSignal?.current) {
+                throw new Error('Conversion cancelled');
+            }
+
             const progressPercent = 5 + (pageNum / pdf.numPages) * 90;
             onProgress?.(progressPercent, `Processing page ${pageNum} of ${pdf.numPages}...`);
 
             const page = await pdf.getPage(pageNum);
 
-            // Render page to canvas
-            const scale = 2.0; // Higher scale for better OCR accuracy
+            // Render page to canvas at 2x scale for better OCR accuracy
+            const scale = 2.0;
             const viewport = page.getViewport({ scale });
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
@@ -115,22 +174,28 @@ export const extractTextWithOCR = async (
             canvas.height = viewport.height;
 
             try {
-                await page.render({
-                    canvasContext: context,
-                    viewport: viewport,
-                }).promise;
-            } catch (renderError) {
-                console.error(`Failed to render page ${pageNum}:`, renderError);
-                throw new Error(`Failed to render PDF page ${pageNum}. The PDF may be corrupted.`);
+                await page.render({ canvasContext: context, viewport }).promise;
+            } catch {
+                throw new Error(
+                    `Failed to render PDF page ${pageNum}. The PDF may be corrupted.`
+                );
             }
 
-            // Perform OCR on the canvas
+            // Perform OCR
             try {
                 const { data: { text } } = await worker.recognize(canvas);
-                fullText += `\n\n--- Page ${pageNum} ---\n\n${text.trim()}`;
-            } catch (ocrError) {
-                console.error(`OCR failed on page ${pageNum}:`, ocrError);
-                throw new Error(`OCR failed on page ${pageNum}. Please try with a different PDF or check your connection.`);
+
+                // Split OCR text into paragraphs (double newlines)
+                const paragraphs = text
+                    .split(/\n\s*\n/)
+                    .map((p: string) => p.trim())
+                    .filter((p: string) => p.length > 0);
+
+                pages.push({ pageNumber: pageNum, paragraphs });
+            } catch {
+                throw new Error(
+                    `OCR failed on page ${pageNum}. Please try with a different PDF or check your connection.`
+                );
             }
 
             // Clean up canvas to free memory
@@ -142,148 +207,168 @@ export const extractTextWithOCR = async (
         // Terminate worker
         if (worker) {
             await worker.terminate();
+            worker = null;
         }
-        onProgress?.(100, 'OCR complete!');
 
-        return {
-            text: fullText.trim(),
-            pageCount: pdf.numPages
-        };
+        onProgress?.(100, 'OCR complete!');
+        return { pages, pageCount: pdf.numPages };
     } catch (error) {
-        // Ensure worker is terminated even on error
+        // Ensure worker is terminated on error
         if (worker) {
-            try {
-                await worker.terminate();
-            } catch (terminateError) {
-                console.error('Failed to terminate OCR worker:', terminateError);
-            }
+            try { await worker.terminate(); } catch { /* ignore */ }
         }
         throw error;
+    } finally {
+        pdf.destroy();
     }
 };
 
-/**
- * Convert extracted text to Word document (.docx)
- */
+// ── Word Document Generation ──────────────────────
+
+export const pagesToWord = async (
+    pages: PageData[],
+    filename: string = 'converted-document.docx'
+): Promise<Blob> => {
+    const docTitle = filename.replace(/\.pdf$/i, '');
+
+    // Build sections — one section per page with page breaks
+    const sections = pages.map((pageData, index) => {
+        const children: Paragraph[] = [];
+
+        // First page gets the document title
+        if (index === 0) {
+            children.push(
+                new Paragraph({
+                    text: docTitle,
+                    heading: HeadingLevel.HEADING_1,
+                    spacing: { after: 200 },
+                })
+            );
+        }
+
+        // Add paragraphs from this page
+        if (pageData.paragraphs.length === 0) {
+            // Empty page — add a blank paragraph
+            children.push(new Paragraph({ text: '' }));
+        } else {
+            for (const paraText of pageData.paragraphs) {
+                // Preserve line breaks within paragraphs
+                const lines = paraText.split('\n').filter(l => l.length > 0);
+
+                children.push(
+                    new Paragraph({
+                        children: lines.map((line, lineIndex) =>
+                            new TextRun({
+                                text: line,
+                                break: lineIndex > 0 ? 1 : undefined,
+                            })
+                        ),
+                        spacing: { after: 120 },
+                    })
+                );
+            }
+        }
+
+        return {
+            properties: index > 0
+                ? { type: SectionType.NEXT_PAGE as const }
+                : {},
+            children,
+        };
+    });
+
+    // Fallback: if no pages, create a minimal document
+    if (sections.length === 0) {
+        sections.push({
+            properties: {},
+            children: [new Paragraph({ text: 'No content could be extracted from this PDF.' })],
+        });
+    }
+
+    const doc = new Document({ sections });
+    return Packer.toBlob(doc);
+};
+
+// ── Legacy textToWord (backward-compatible) ───────
+
 export const textToWord = async (
     text: string,
     filename: string = 'converted-document.docx'
 ): Promise<Blob> => {
-    // Split text into pages — handle both leading \n\n and trimmed first page
-    const pages = text.split(/\n*--- Page \d+ ---\n\n/);
+    // Parse the legacy "--- Page N ---" format into PageData
+    const rawPages = text.split(/\n*--- Page \d+ ---\n\n/);
+    if (rawPages[0].trim() === '') rawPages.shift();
 
-    // Remove first empty element if present
-    if (pages[0].trim() === '') {
-        pages.shift();
-    }
-
-    const paragraphs: Paragraph[] = [];
-
-    // Add title
-    paragraphs.push(
-        new Paragraph({
-            text: filename.replace(/\.pdf$/i, ''),
-            heading: HeadingLevel.HEADING_1,
-            spacing: { after: 200 },
-        })
-    );
-
-    // Process each page
-    pages.forEach((pageText, index) => {
-        // Add page heading
-        paragraphs.push(
-            new Paragraph({
-                text: `Page ${index + 1}`,
-                heading: HeadingLevel.HEADING_2,
-                spacing: { before: 300, after: 100 },
-            })
-        );
-
-        // Split page text into paragraphs
-        const pageParagraphs = pageText
+    const pages: PageData[] = rawPages.map((pageText, i) => ({
+        pageNumber: i + 1,
+        paragraphs: pageText
             .split('\n\n')
             .map(p => p.trim())
-            .filter(p => p.length > 0);
+            .filter(p => p.length > 0),
+    }));
 
-        // Add paragraphs
-        pageParagraphs.forEach(paraText => {
-            // Handle potential line breaks within paragraphs
-            const lines = paraText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-
-            if (lines.length > 0) {
-                paragraphs.push(
-                    new Paragraph({
-                        children: lines.map((line, lineIndex) =>
-                            new TextRun({
-                                text: line + (lineIndex < lines.length - 1 ? ' ' : ''),
-                            })
-                        ),
-                        spacing: { after: 100 },
-                    })
-                );
-            }
-        });
-    });
-
-    // Create document
-    const doc = new Document({
-        sections: [
-            {
-                properties: {},
-                children: paragraphs,
-            },
-        ],
-    });
-
-    // Generate blob
-    const blob = await Packer.toBlob(doc);
-    return blob;
+    return pagesToWord(pages, filename);
 };
 
-/**
- * Full PDF to Word conversion (Non-OCR)
- */
+// ── Main Conversion Pipelines ─────────────────────
+
 export const pdfToWord = async (
     file: File,
-    onProgress?: (progress: number, status: string) => void
+    onProgress?: (progress: number, status: string) => void,
+    abortSignal?: AbortSignal
 ): Promise<Blob> => {
     onProgress?.(10, 'Extracting text from PDF...');
-    const { text } = await extractTextFromPDF(file);
+    const { pages } = await extractTextFromPDF(file, abortSignal);
+
+    if (abortSignal?.current) throw new Error('Conversion cancelled');
 
     onProgress?.(70, 'Creating Word document...');
-    const wordBlob = await textToWord(text, file.name);
+    const wordBlob = await pagesToWord(pages, file.name);
 
     onProgress?.(100, 'Conversion complete!');
     return wordBlob;
 };
 
-/**
- * Full PDF to Word conversion with OCR
- */
 export const pdfToWordWithOCR = async (
     file: File,
-    onProgress?: (progress: number, status: string) => void
+    onProgress?: (progress: number, status: string) => void,
+    abortSignal?: AbortSignal
 ): Promise<Blob> => {
-    const { text } = await extractTextWithOCR(file, (progress, status) => {
-        // Scale OCR progress to 0-90%
-        onProgress?.(progress * 0.9, status);
-    });
+    const { pages } = await extractTextWithOCR(
+        file,
+        (progress, status) => {
+            onProgress?.(progress * 0.9, status);
+        },
+        abortSignal
+    );
+
+    if (abortSignal?.current) throw new Error('Conversion cancelled');
 
     onProgress?.(90, 'Creating Word document...');
-    const wordBlob = await textToWord(text, file.name);
+    const wordBlob = await pagesToWord(pages, file.name);
 
     onProgress?.(100, 'Conversion complete!');
     return wordBlob;
 };
 
-/**
- * Download Word document
- */
+// ── Download ──────────────────────────────────────
+
+/** Sanitize filename — strip path traversal and control characters */
+function sanitizeFilename(name: string): string {
+    return name
+        .replace(/[/\\]/g, '_')      // path separators
+        .replace(/\.\./g, '_')       // path traversal
+        .replace(/[\x00-\x1F]/g, '') // control characters
+        .replace(/^\.+/, '')         // leading dots (hidden files)
+        .trim() || 'document';
+}
+
 export const downloadWord = (blob: Blob, filename: string): void => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = filename.endsWith('.docx') ? filename : `${filename}.docx`;
+    const safe = sanitizeFilename(filename);
+    link.download = safe.endsWith('.docx') ? safe : `${safe}.docx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

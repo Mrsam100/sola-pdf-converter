@@ -15,10 +15,8 @@ export const createConfiguredWorker = async (language: string = 'eng') => {
         // Language data is fetched from the tessdata CDN (version-independent).
         const worker = await createWorker(language, 1, {
             langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-            logger: (info: any) => {
-                if (info.status === 'recognizing text') {
-                    console.log(`OCR Progress: ${Math.round(info.progress * 100)}%`);
-                }
+            logger: () => {
+                // Progress handled by caller
             }
         });
 

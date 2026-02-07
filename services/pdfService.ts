@@ -23,7 +23,12 @@ import type {
  * @param config - Optional configuration for page ordering and selection
  * @returns Promise<Uint8Array> - The merged PDF as a byte array
  */
-export const mergePDFs = async (files: File[], config?: MergePdfConfig): Promise<Uint8Array> => {
+export const mergePDFs = async (
+    files: File[],
+    config?: MergePdfConfig,
+    onProgress?: (progress: number, status: string) => void,
+    abortSignal?: { current: boolean }
+): Promise<Uint8Array> => {
     if (files.length === 0) {
         throw new Error('No files provided for merging');
     }
@@ -31,6 +36,8 @@ export const mergePDFs = async (files: File[], config?: MergePdfConfig): Promise
     if (files.length === 1) {
         throw new Error('Please select at least 2 PDF files to merge');
     }
+
+    onProgress?.(5, 'Preparing to merge...');
 
     // Create a new PDF document
     const mergedPdf = await PDFDocument.create();
@@ -56,7 +63,14 @@ export const mergePDFs = async (files: File[], config?: MergePdfConfig): Promise
     }
 
     // Process each file according to order
-    for (const { file, pageIndices } of processOrder) {
+    const total = processOrder.length;
+    for (let idx = 0; idx < total; idx++) {
+        if (abortSignal?.current) throw new Error('Merge cancelled');
+
+        const { file, pageIndices } = processOrder[idx];
+        const pct = 10 + ((idx / total) * 80);
+        onProgress?.(pct, `Processing file ${idx + 1} of ${total}: ${file.name}`);
+
         // Validate file type
         if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
             throw new Error(`File "${file.name}" is not a PDF. Please select only PDF files.`);
@@ -88,12 +102,17 @@ export const mergePDFs = async (files: File[], config?: MergePdfConfig): Promise
                 mergedPdf.addPage(page);
             });
         } catch (error) {
+            if (error instanceof Error && error.message === 'Merge cancelled') throw error;
             throw new Error(`Failed to process "${file.name}": ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 
+    if (abortSignal?.current) throw new Error('Merge cancelled');
+    onProgress?.(95, 'Saving merged PDF...');
+
     // Save the merged PDF
     const mergedPdfBytes = await mergedPdf.save();
+    onProgress?.(100, 'Merge complete!');
     return mergedPdfBytes;
 };
 
@@ -105,11 +124,15 @@ export const mergePDFs = async (files: File[], config?: MergePdfConfig): Promise
  */
 export const splitPDF = async (
     file: File,
-    config: SplitPdfConfig
+    config: SplitPdfConfig,
+    onProgress?: (progress: number, status: string) => void,
+    abortSignal?: { current: boolean }
 ): Promise<{ pdf: Uint8Array; name: string }[]> => {
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
         throw new Error('File is not a PDF');
     }
+
+    onProgress?.(5, 'Loading PDF...');
 
     // Read the file
     const arrayBuffer = await file.arrayBuffer();
@@ -120,7 +143,10 @@ export const splitPDF = async (
         throw new Error('PDF has no pages');
     }
 
-    const baseName = file.name.replace('.pdf', '');
+    if (abortSignal?.current) throw new Error('Split cancelled');
+    onProgress?.(10, 'Parsing split configuration...');
+
+    const baseName = file.name.replace(/\.pdf$/i, '');
     let parsedRanges: number[][] = [];
 
     // Parse based on split mode
@@ -216,6 +242,10 @@ export const splitPDF = async (
     const results: { pdf: Uint8Array; name: string }[] = [];
 
     for (let i = 0; i < parsedRanges.length; i++) {
+        if (abortSignal?.current) throw new Error('Split cancelled');
+        const pct = 20 + ((i / parsedRanges.length) * 70);
+        onProgress?.(pct, `Creating PDF ${i + 1} of ${parsedRanges.length}...`);
+
         const pages = parsedRanges[i];
         const newPdf = await PDFDocument.create();
 
@@ -239,6 +269,7 @@ export const splitPDF = async (
         results.push({ pdf: pdfBytes, name });
     }
 
+    onProgress?.(100, 'Split complete!');
     return results;
 };
 
@@ -402,6 +433,18 @@ export const getPDFInfo = async (file: File): Promise<{
 };
 
 /**
+ * Sanitize a filename by removing path traversal and control characters
+ */
+function sanitizeFilename(name: string): string {
+    return name
+        .replace(/[/\\]/g, '_')
+        .replace(/\.\./g, '_')
+        .replace(/[\x00-\x1F]/g, '')
+        .replace(/^\.+/, '')
+        .trim() || 'document';
+}
+
+/**
  * Download a PDF file
  * @param pdfBytes - The PDF as a byte array
  * @param filename - The filename to save as
@@ -410,15 +453,16 @@ export const downloadPDF = (pdfBytes: Uint8Array, filename: string): void => {
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
 
+    const safe = sanitizeFilename(filename);
     const link = document.createElement('a');
     link.href = url;
-    link.download = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
+    link.download = safe.endsWith('.pdf') ? safe : `${safe}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    // Clean up the URL object
-    setTimeout(() => URL.revokeObjectURL(url), 100);
+    // Clean up the URL object after download starts
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
 };
 
 /**
@@ -453,7 +497,7 @@ export const pdfToJPG = async (
     const pdf = await loadingTask.promise;
 
     const totalPages = pdf.numPages;
-    const baseName = file.name.replace('.pdf', '');
+    const baseName = file.name.replace(/\.pdf$/i, '');
 
     // Determine which pages to convert
     let pagesToConvert: number[] = [];
@@ -576,7 +620,7 @@ export const downloadImage = (blob: Blob, filename: string): void => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 100);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
 };
 
 /**

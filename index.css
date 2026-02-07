@@ -2458,6 +2458,70 @@ select:focus-visible {
   cursor: grabbing;
 }
 
+.sign-field-item-with-preview {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sign-field-item-with-preview .sign-field-item-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+}
+
+.sign-field-preview {
+  border-top: 1px solid var(--border-color);
+  padding: 0.375rem 0.625rem;
+  background: var(--surface-alt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+}
+
+.sign-field-preview img {
+  max-width: 100%;
+  max-height: 40px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.sign-panel-bottom {
+  margin-top: auto;
+  padding: 1rem 0 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.sign-btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.sign-btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.sign-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Placed fields on canvas */
 .placed-field {
   position: absolute;
