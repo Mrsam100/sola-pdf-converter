@@ -21,6 +21,7 @@ import RemoveBackground from './RemoveBackground';
 import ImageConverter from './ImageConverter';
 import OCRToText from './OCRToText';
 import AudioToText from './AudioToText';
+import SignPDF from './SignPDF';
 
 interface ToolDetailProps {
   tool: Tool;
@@ -61,6 +62,9 @@ const ProductDetail: React.FC<ToolDetailProps> = ({ tool, onBack }) => {
   }
   if (tool.id === 'edit-pdf') {
     return <EditPDF tool={tool} onBack={onBack} />;
+  }
+  if (tool.id === 'sign-pdf') {
+    return <SignPDF tool={tool} onBack={onBack} />;
   }
 
   // Route to OCR tool (client-side, no API key needed)

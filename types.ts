@@ -183,3 +183,27 @@ export const DEFAULT_ROTATE_PDF_CONFIG: RotatePdfConfig = {
   rotation: 90,
   pageSelection: 'all',
 };
+
+// ========================================
+// Sign PDF Types
+// ========================================
+
+export interface SignatureData {
+  id: string;
+  type: 'signature' | 'initials' | 'stamp';
+  dataUrl: string;
+  method: 'text' | 'draw' | 'upload';
+  fontFamily?: string;
+  color?: string;
+}
+
+export interface PlacedField {
+  id: string;
+  type: 'signature' | 'initials' | 'name' | 'date';
+  pageNumber: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  signatureId?: string;
+}

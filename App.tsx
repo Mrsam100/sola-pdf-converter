@@ -17,12 +17,14 @@ import { MobileOptimized, LowBatteryWarning, SlowConnectionWarning } from './com
 import ToastContainer from './components/Toast';
 import { usePreventZoom } from './hooks/useMobile';
 
+
 function App() {
   const [view, setView] = useState<ViewState>({ type: 'home' });
 
   // Prevent accidental zoom on mobile
   usePreventZoom();
 
+  
   // Initialize monitoring and error handling
   useEffect(() => {
     setupGlobalErrorHandling();
