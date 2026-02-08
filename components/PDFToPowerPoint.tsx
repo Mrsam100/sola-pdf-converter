@@ -71,6 +71,7 @@ const PDFToPowerPoint: React.FC<PDFToPowerPointProps> = ({ tool, onBack }) => {
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) validateAndSetFile(e.target.files[0]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }, []);

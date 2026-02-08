@@ -32,13 +32,21 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
   );
 
   useEffect(() => {
-    if (files.length > 0 && config.pageOrder.length === 0) {
-      const initialOrder = files.map(file => ({
-        fileId: file.name,
-        fileName: file.name,
-        pageIndices: [],
-      }));
-      updateConfig({ pageOrder: initialOrder });
+    if (files.length > 0) {
+      // Check if cached pageOrder matches current files
+      const fileNames = new Set(files.map(f => f.name));
+      const configNames = new Set(config.pageOrder.map(p => p.fileName));
+      const needsReinit = fileNames.size !== configNames.size ||
+        ![...fileNames].every(name => configNames.has(name));
+
+      if (needsReinit) {
+        const initialOrder = files.map(file => ({
+          fileId: file.name,
+          fileName: file.name,
+          pageIndices: [],
+        }));
+        updateConfig({ pageOrder: initialOrder });
+      }
     }
   }, [files]);
 

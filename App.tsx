@@ -2,6 +2,8 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
+
+
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
@@ -15,6 +17,7 @@ import { setupGlobalErrorHandling, logger, performanceMonitor } from './utils/mo
 import { MobileOptimized, LowBatteryWarning, SlowConnectionWarning } from './components/MobileOptimized';
 import ToastContainer from './components/Toast';
 import { usePreventZoom } from './hooks/useMobile';
+
 
 
 function App() {
@@ -40,6 +43,8 @@ function App() {
       logger.info('Application unmounted');
     };
   }, []);
+
+
 
   const handleNavClick = (e: React.MouseEvent<HTMLElement>, targetId: string) => {
     e.preventDefault();

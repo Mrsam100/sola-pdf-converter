@@ -7,9 +7,8 @@
  * Ready for millions of users
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { SplitPdfConfig } from '../../types';
-import { DEFAULT_SPLIT_PDF_CONFIG } from '../../types';
 import { configService } from '../../services/configService';
 import { PagePreview } from './PagePreview';
 
