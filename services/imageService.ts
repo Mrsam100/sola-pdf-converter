@@ -14,6 +14,9 @@ const MAX_DIMENSION = 16384;
  * Prevents browser crashes from extremely large images.
  */
 const validateDimensions = (width: number, height: number): void => {
+    if (width <= 0 || height <= 0) {
+        throw new Error('Image has invalid dimensions. The file may be corrupted.');
+    }
     if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
         throw new Error(
             `Image dimensions (${width}x${height}) exceed the maximum supported size of ${MAX_DIMENSION}x${MAX_DIMENSION}px. Please resize the image first.`
@@ -35,12 +38,20 @@ const loadImage = (file: File): Promise<HTMLImageElement> => {
         const img = new Image();
         const objectUrl = URL.createObjectURL(file);
 
+        const timeout = setTimeout(() => {
+            URL.revokeObjectURL(objectUrl);
+            img.src = '';
+            reject(new Error('Image took too long to load. The file may be corrupted.'));
+        }, 30_000);
+
         img.onload = () => {
+            clearTimeout(timeout);
             URL.revokeObjectURL(objectUrl);
             resolve(img);
         };
 
         img.onerror = () => {
+            clearTimeout(timeout);
             URL.revokeObjectURL(objectUrl);
             reject(new Error('Failed to load image. The file may be corrupted or in an unsupported format.'));
         };
@@ -49,15 +60,28 @@ const loadImage = (file: File): Promise<HTMLImageElement> => {
     });
 };
 
+/** Allowlist of safe image MIME types (excludes SVG which can contain scripts) */
+const SAFE_IMAGE_TYPES = new Set([
+    'image/png', 'image/jpeg', 'image/jpg', 'image/webp',
+    'image/heic', 'image/heif', 'image/bmp', 'image/tiff', 'image/gif',
+]);
+
+/** Validate file is a safe image type and not empty */
+const validateImageType = (file: File): void => {
+    if (!file.type || !SAFE_IMAGE_TYPES.has(file.type)) {
+        throw new Error('Please select a valid image file (PNG, JPG, WebP, HEIC, BMP, or TIFF).');
+    }
+    if (file.size === 0) {
+        throw new Error('The selected file is empty.');
+    }
+};
+
 /**
  * Remove background using canvas-based edge-pixel color detection.
  * Works best on solid-color backgrounds. Used as fallback when ML model is unavailable.
  */
 export const removeBackgroundCanvas = async (file: File, threshold: number = 30): Promise<Blob> => {
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-        throw new Error('Please select a valid image file');
-    }
+    validateImageType(file);
 
     const img = await loadImage(file);
 
@@ -162,7 +186,11 @@ const detectBestDevice = async (): Promise<'webgpu' | 'wasm'> => {
     try {
         const gpu = (navigator as any).gpu;
         if (gpu) {
-            const adapter = await gpu.requestAdapter();
+            // 3s timeout: some drivers hang on requestAdapter
+            const adapter = await Promise.race([
+                gpu.requestAdapter(),
+                new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+            ]);
             if (adapter) return 'webgpu';
         }
     } catch { /* WebGPU not available */ }
@@ -231,9 +259,6 @@ const rawImageToBlob = async (resultImage: any): Promise<Blob> => {
     const channels: number = resultImage.channels
         || (data && pixelCount > 0 ? Math.round(data.length / pixelCount) : 0);
 
-    // eslint-disable-next-line no-console
-    console.log('[BgRemoval] RawImage:', { width, height, channels, dataLen: data?.length, type: data?.constructor?.name });
-
     // Method 1: Build RGBA from raw pixel data → real HTMLCanvasElement
     if (width > 0 && height > 0 && data && data.length > 0) {
         let rgba: Uint8ClampedArray;
@@ -241,7 +266,6 @@ const rawImageToBlob = async (resultImage: any): Promise<Blob> => {
         if (channels === 4 && data.length === pixelCount * 4) {
             rgba = new Uint8ClampedArray(data);
         } else if (channels === 3 && data.length === pixelCount * 3) {
-            // RGB → RGBA (add opaque alpha)
             rgba = new Uint8ClampedArray(pixelCount * 4);
             for (let i = 0; i < pixelCount; i++) {
                 rgba[i * 4]     = data[i * 3];
@@ -250,7 +274,6 @@ const rawImageToBlob = async (resultImage: any): Promise<Blob> => {
                 rgba[i * 4 + 3] = 255;
             }
         } else if (channels === 1 && data.length === pixelCount) {
-            // Grayscale → RGBA
             rgba = new Uint8ClampedArray(pixelCount * 4);
             for (let i = 0; i < pixelCount; i++) {
                 rgba[i * 4]     = data[i];
@@ -259,10 +282,9 @@ const rawImageToBlob = async (resultImage: any): Promise<Blob> => {
                 rgba[i * 4 + 3] = 255;
             }
         } else {
-            // Best effort passthrough — will throw in ImageData ctor if length mismatches
-            // eslint-disable-next-line no-console
-            console.warn('[BgRemoval] Unexpected channel layout, trying passthrough');
-            rgba = new Uint8ClampedArray(data);
+            throw new Error(
+                `Unexpected image data: ${data.length} bytes for ${width}x${height} (${channels}ch). Please try a different image.`
+            );
         }
 
         const canvas = document.createElement('canvas');
@@ -270,7 +292,6 @@ const rawImageToBlob = async (resultImage: any): Promise<Blob> => {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error('Could not create canvas context');
-        // Copy into a fresh ArrayBuffer-backed array (satisfies ImageData ctor type)
         const pixelData = new Uint8ClampedArray(width * height * 4);
         pixelData.set(rgba);
         const imageData = new ImageData(pixelData, width, height);
@@ -289,8 +310,6 @@ const rawImageToBlob = async (resultImage: any): Promise<Blob> => {
 
     // Method 2: RawImage.toCanvas() — may return OffscreenCanvas or HTMLCanvasElement
     if (typeof resultImage.toCanvas === 'function') {
-        // eslint-disable-next-line no-console
-        console.log('[BgRemoval] Using toCanvas() fallback');
         const canvas = resultImage.toCanvas();
         if (typeof canvas.convertToBlob === 'function') {
             const blob = await canvas.convertToBlob({ type: 'image/png' });
@@ -325,12 +344,7 @@ export const removeBackgroundML = async (
     file: File,
     onProgress?: BgRemovalProgressCallback
 ): Promise<Blob> => {
-    if (!file.type.startsWith('image/')) {
-        throw new Error('Please select a valid image file');
-    }
-
-    // eslint-disable-next-line no-console
-    console.time('[BgRemoval] Total');
+    validateImageType(file);
 
     // Pre-validate dimensions before sending to ONNX (prevents WASM OOM)
     const img = await loadImage(file);
@@ -338,29 +352,17 @@ export const removeBackgroundML = async (
 
     onProgress?.(5, 'Loading AI engine...');
 
-    // eslint-disable-next-line no-console
-    console.time('[BgRemoval] Import');
     const { pipeline: createPipeline } = await import('@huggingface/transformers');
-    // eslint-disable-next-line no-console
-    console.timeEnd('[BgRemoval] Import');
 
     if (!bgRemovalPipeline) {
         onProgress?.(8, 'Downloading AI model (first time only)...');
 
-        // Detect best device: WebGPU (GPU, 1-5s) >> WASM (CPU, 30-70s)
         bgRemovalDevice = await detectBestDevice();
-        // eslint-disable-next-line no-console
-        console.log(`[BgRemoval] Device: ${bgRemovalDevice}`);
 
         const progressCb = (p: any) => {
             if (p.status === 'progress' && typeof p.progress === 'number') {
                 const uiPct = 8 + (p.progress * 0.37);
                 onProgress?.(uiPct, `Downloading model... ${Math.round(p.progress)}%`);
-            }
-            // eslint-disable-next-line no-console
-            if (p.status === 'done' || p.status === 'ready') {
-                // eslint-disable-next-line no-console
-                console.log('[BgRemoval] Pipeline event:', p.status, p.file || '');
             }
         };
 
@@ -370,8 +372,6 @@ export const removeBackgroundML = async (
             { dtype: 'q8' as any, device: device as any, progress_callback: progressCb }
         );
 
-        // eslint-disable-next-line no-console
-        console.time('[BgRemoval] Pipeline');
         try {
             bgRemovalPipeline = await withTimeout(
                 makePipeline(bgRemovalDevice),
@@ -379,10 +379,7 @@ export const removeBackgroundML = async (
                 'Model download'
             );
         } catch (firstErr) {
-            // If WebGPU failed, retry with WASM
             if (bgRemovalDevice === 'webgpu') {
-                // eslint-disable-next-line no-console
-                console.warn('[BgRemoval] WebGPU failed, falling back to WASM:', firstErr);
                 bgRemovalDevice = 'wasm';
                 onProgress?.(8, 'Setting up AI model (WASM)...');
                 try {
@@ -393,34 +390,16 @@ export const removeBackgroundML = async (
                     );
                 } catch (wasmErr) {
                     bgRemovalPipeline = null;
-                    // eslint-disable-next-line no-console
-                    console.error('[BgRemoval] WASM fallback also failed:', wasmErr);
-                    // eslint-disable-next-line no-console
-                    console.timeEnd('[BgRemoval] Pipeline');
-                    // eslint-disable-next-line no-console
-                    console.timeEnd('[BgRemoval] Total');
                     throw classifyMLError(wasmErr);
                 }
             } else {
                 bgRemovalPipeline = null;
-                // eslint-disable-next-line no-console
-                console.error('[BgRemoval] Pipeline creation failed:', firstErr);
-                // eslint-disable-next-line no-console
-                console.timeEnd('[BgRemoval] Pipeline');
-                // eslint-disable-next-line no-console
-                console.timeEnd('[BgRemoval] Total');
                 throw classifyMLError(firstErr);
             }
         }
-        // eslint-disable-next-line no-console
-        console.timeEnd('[BgRemoval] Pipeline');
-        // eslint-disable-next-line no-console
-        console.log(`[BgRemoval] Pipeline ready (${bgRemovalDevice})`);
 
         onProgress?.(50, 'AI model ready! Processing image...');
     } else {
-        // eslint-disable-next-line no-console
-        console.log(`[BgRemoval] Using cached pipeline (${bgRemovalDevice})`);
         onProgress?.(50, 'Processing image with AI...');
     }
 
@@ -430,8 +409,7 @@ export const removeBackgroundML = async (
         const isGpu = bgRemovalDevice === 'webgpu';
         onProgress?.(55, isGpu ? 'Processing image...' : 'Processing image... This takes 15-30 seconds');
 
-        // Tick progress during inference so the UI doesn't appear frozen.
-        // WASM blocks the main thread heavily; WebGPU is async and fast.
+        // Tick progress during inference so the UI doesn't appear frozen
         let inferenceProgress = 55;
         const progressTicker = setInterval(() => {
             inferenceProgress = Math.min(82, inferenceProgress + 1);
@@ -445,47 +423,30 @@ export const removeBackgroundML = async (
             );
         }, 1000);
 
-        // eslint-disable-next-line no-console
-        console.time('[BgRemoval] Inference');
         let output: any;
         try {
             output = await withTimeout(
                 bgRemovalPipeline(imageUrl),
-                60_000, // 1 minute for inference
+                60_000,
                 'Image processing'
             );
         } catch (err) {
-            // eslint-disable-next-line no-console
-            console.error('[BgRemoval] Inference failed:', err);
-            // eslint-disable-next-line no-console
-            console.timeEnd('[BgRemoval] Inference');
-            // eslint-disable-next-line no-console
-            console.timeEnd('[BgRemoval] Total');
             throw classifyMLError(err, 'processing');
         } finally {
             clearInterval(progressTicker);
         }
-        // eslint-disable-next-line no-console
-        console.timeEnd('[BgRemoval] Inference');
 
         onProgress?.(85, 'Generating result...');
 
-        // Extract RawImage from output (may be array or single object)
         const resultImage = Array.isArray(output) ? output[0] : output;
 
         if (!resultImage) {
             throw new Error('AI model returned an empty result. Please try again.');
         }
 
-        // eslint-disable-next-line no-console
-        console.time('[BgRemoval] Blob');
         const blob = await rawImageToBlob(resultImage);
-        // eslint-disable-next-line no-console
-        console.timeEnd('[BgRemoval] Blob');
 
         onProgress?.(100, 'Background removed!');
-        // eslint-disable-next-line no-console
-        console.timeEnd('[BgRemoval] Total');
 
         return blob;
     } finally {
@@ -533,10 +494,7 @@ export const removeBackground = async (
     try {
         const blob = await removeBackgroundML(file, onProgress);
         return { blob, method: 'ai', fallbackUsed: false };
-    } catch (mlErr) {
-        // eslint-disable-next-line no-console
-        console.warn('[RemoveBackground] AI model failed, falling back to canvas mode:', mlErr);
-
+    } catch {
         onProgress?.(10, 'AI unavailable, using quick mode...');
 
         try {

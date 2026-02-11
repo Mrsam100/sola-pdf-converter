@@ -28,7 +28,7 @@ const STEPS = [
 ];
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif', 'image/bmp', 'image/tiff'];
+const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic', 'image/heif', 'image/bmp', 'image/tiff'];
 
 /** Sanitize filename: strip path traversal, control chars, limit length */
 const sanitizeFilename = (name: string): string => {
@@ -91,8 +91,13 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
         state === ProcessState.COMPLETED ? 2 : 0;
 
     const validateAndSetFile = useCallback((selectedFile: File) => {
-        if (!selectedFile.type || !ALLOWED_TYPES.some(t => selectedFile.type.startsWith(t))) {
+        if (!selectedFile.type || !ALLOWED_TYPES.includes(selectedFile.type)) {
             setErrorMsg('Please select a valid image file (PNG, JPG, WebP, HEIC, BMP, or TIFF).');
+            return;
+        }
+
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty.');
             return;
         }
 
@@ -170,29 +175,13 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                 },
             });
 
-            // eslint-disable-next-line no-console
-            console.log('[BgRemoval UI] Service returned:', {
-                blobSize: result.blob?.size,
-                blobType: result.blob?.type,
-                method: result.method,
-                fallback: result.fallbackUsed,
-                mounted: mountedRef.current,
-            });
-
-            if (!mountedRef.current) {
-                // eslint-disable-next-line no-console
-                console.warn('[BgRemoval UI] Component unmounted during processing — aborting state update');
-                return;
-            }
+            if (!mountedRef.current) return;
 
             const url = URL.createObjectURL(result.blob);
             setProcessedBlob(result.blob);
             setProcessedPreview(url);
             setFallbackUsed(result.fallbackUsed);
             setState(ProcessState.COMPLETED);
-
-            // eslint-disable-next-line no-console
-            console.log('[BgRemoval UI] State set to COMPLETED, downloading...');
 
             // Auto-download with sanitized filename
             const rawName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
@@ -201,9 +190,6 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
 
             toast.success('Background removed successfully!');
         } catch (err) {
-            // eslint-disable-next-line no-console
-            console.error('[BgRemoval UI] Error in handler:', err);
-
             if (!mountedRef.current) return;
 
             const errorMessage = err instanceof Error ? err.message : 'Failed to remove background. Please try again.';
@@ -340,7 +326,7 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                                 )}
                             </div>
                         ) : state === ProcessState.CONVERTING ? (
-                            <div className="result-area" style={{ padding: '3rem 0' }} aria-live="polite">
+                            <div className="result-area" style={{ padding: '3rem 0' }} aria-live="polite" aria-busy="true">
                                 <div style={{ maxWidth: '300px', margin: '0 auto 2rem' }}>
                                     <div className="loader">
                                         <div
@@ -405,7 +391,7 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                                 </p>
 
                                 {/* Side-by-side comparison */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                                     <div>
                                         <label className="label-text">Original</label>
                                         <div style={{
@@ -482,7 +468,9 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                                     </button>
                                     <button
                                         onClick={() => {
-                                            // Re-process same image
+                                            if (processedPreview) URL.revokeObjectURL(processedPreview);
+                                            setProcessedPreview('');
+                                            setProcessedBlob(null);
                                             setState(ProcessState.IDLE);
                                             setMlProgress(0);
                                             setMlStatus('');
@@ -506,7 +494,7 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                             <div className="flex-center" style={{ marginTop: '1.5rem' }}>
                                 <button
                                     onClick={handleRemoveBackground}
-                                    disabled={processingRef.current}
+                                    disabled={isProcessing}
                                     className="btn-action"
                                 >
                                     Remove Background
