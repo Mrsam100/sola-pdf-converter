@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Tool, ProcessState } from '../types';
 import { encryptPDF, downloadPDF, EncryptPermissions } from '../services/pdfService';
-import { useWakeLock } from '../hooks/usePageVisibility';
+import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
 import { toast } from '../hooks/useToast';
 import { formatFileSize } from '../utils/formatFileSize';
 import BackButton from './BackButton';
@@ -62,9 +62,15 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
         modifying: false,
     });
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const mountedRef = useRef(true);
 
     const isProcessing = state === ProcessState.CONVERTING;
     useWakeLock(isProcessing);
+    usePageVisibility();
+
+    useEffect(() => {
+        return () => { mountedRef.current = false; };
+    }, []);
 
     const currentStep = state === ProcessState.IDLE
         ? (file ? 1 : -1)
@@ -101,9 +107,8 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
     }, []);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            validateAndSetFile(e.target.files[0]);
-        }
+        if (e.target.files?.[0]) validateAndSetFile(e.target.files[0]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -149,11 +154,25 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
             return;
         }
 
+        // Magic byte validation
+        try {
+            const header = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+            if (String.fromCharCode(...header).indexOf('%PDF') !== 0) {
+                setErrorMsg('This file does not appear to be a valid PDF (invalid file header).');
+                return;
+            }
+        } catch {
+            setErrorMsg('Failed to read the file. Please try selecting it again.');
+            return;
+        }
+
         setState(ProcessState.CONVERTING);
         setErrorMsg('');
 
         try {
             const encryptedBytes = await encryptPDF(file, password, password, permissions);
+            if (!mountedRef.current) return;
+
             setResultBlob(encryptedBytes);
 
             const filename = file.name.replace(/\.pdf$/i, '_encrypted.pdf');
@@ -162,7 +181,8 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
             setState(ProcessState.COMPLETED);
             toast.success('PDF encrypted and downloaded!');
         } catch (err) {
-            console.error('Encryption error:', err);
+            if (!mountedRef.current) return;
+
             let message = 'Failed to encrypt PDF';
             if (err instanceof Error) {
                 if (err.message.includes('encrypted') || err.message.includes('password')) {
@@ -254,7 +274,9 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
                         {state === ProcessState.IDLE && !file && (
                             <div
                                 className={`upload-zone${isDragging ? ' drag-over' : ''}`}
+                                role="button" tabIndex={0} aria-label="Upload PDF file"
                                 onClick={() => fileInputRef.current?.click()}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
                                 onDragOver={handleDragOver}
                                 onDragEnter={handleDragOver}
                                 onDragLeave={handleDragLeave}
@@ -309,6 +331,7 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
                                             type={showPassword ? 'text' : 'password'}
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' && canEncrypt) handleEncrypt(); }}
                                             placeholder="Enter a strong password"
                                             style={{
                                                 width: '100%', padding: '0.75rem 2.75rem 0.75rem 0.75rem', fontSize: '0.9rem',
@@ -371,6 +394,7 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
                                         type={showPassword ? 'text' : 'password'}
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' && canEncrypt) handleEncrypt(); }}
                                         placeholder="Re-enter your password"
                                         style={{
                                             width: '100%', padding: '0.75rem', fontSize: '0.9rem',
@@ -479,10 +503,15 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
                                 <p className="workspace-desc" style={{ marginBottom: '0.5rem' }}>
                                     Your password-protected PDF has been downloaded.
                                 </p>
-                                {file && (
-                                    <p style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)', marginBottom: '2rem' }}>
-                                        {file.name.replace(/\.pdf$/i, '_encrypted.pdf')} &middot; {formatFileSize(file.size)}
-                                    </p>
+                                {file && resultBlob && (
+                                    <div style={{ padding: '1rem 1.5rem', background: 'var(--success-bg)', borderRadius: 'var(--radius-md)', margin: '1.5rem auto', maxWidth: '360px', fontSize: '0.875rem' }}>
+                                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+                                            {file.name.replace(/\.pdf$/i, '_encrypted.pdf')}
+                                        </div>
+                                        <div style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                                            {formatFileSize(resultBlob.length)}
+                                        </div>
+                                    </div>
                                 )}
 
                                 <div className="action-row">

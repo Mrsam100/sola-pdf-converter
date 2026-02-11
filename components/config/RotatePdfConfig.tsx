@@ -9,7 +9,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { RotatePdfConfig } from '../../types';
-import { DEFAULT_ROTATE_PDF_CONFIG } from '../../types';
 import { configService } from '../../services/configService';
 import { PagePreview } from './PagePreview';
 
@@ -33,17 +32,23 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
   const [pageCount, setPageCount] = useState<number>(0);
 
   useEffect(() => {
+    let cancelled = false;
     const loadPageCount = async () => {
       try {
         const { pdfjsLib } = await import('../../services/pdfConfig');
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        setPageCount(pdf.numPages);
-      } catch (err) {
-        console.error('Failed to load PDF page count:', err);
+        try {
+          if (!cancelled) setPageCount(pdf.numPages);
+        } finally {
+          pdf.destroy();
+        }
+      } catch {
+        // Silent — page count is non-critical
       }
     };
     loadPageCount();
+    return () => { cancelled = true; };
   }, [file]);
 
   const updateConfig = (updates: Partial<RotatePdfConfig>) => {

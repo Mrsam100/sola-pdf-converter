@@ -3,42 +3,112 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
-import { Tool, ProcessState, CompressPdfConfig, ConversionStep } from '../types';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Tool, ProcessState, CompressPdfConfig } from '../types';
 import { compressPDF, downloadPDF } from '../services/pdfService';
 import { CompressPdfConfig as CompressPdfConfigComponent } from './config/CompressPdfConfig';
+import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
+import { toast } from '../hooks/useToast';
+import { formatFileSize } from '../utils/formatFileSize';
+import BackButton from './BackButton';
+import StepProgress from './StepProgress';
 
 interface CompressPDFProps {
     tool: Tool;
     onBack: () => void;
 }
 
+const STEPS = [
+    { label: 'Upload' },
+    { label: 'Configure' },
+    { label: 'Compressing' },
+    { label: 'Complete' },
+];
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
 const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
-    const [conversionStep, setConversionStep] = useState<ConversionStep>('upload');
+    const [showConfig, setShowConfig] = useState(false);
     const [file, setFile] = useState<File | null>(null);
     const [config, setConfig] = useState<CompressPdfConfig | undefined>(undefined);
     const [originalSize, setOriginalSize] = useState<number>(0);
     const [compressedSize, setCompressedSize] = useState<number>(0);
+    const [progress, setProgress] = useState<number>(0);
+    const [progressStatus, setProgressStatus] = useState<string>('');
     const [errorMsg, setErrorMsg] = useState<string>('');
+    const [isDragging, setIsDragging] = useState(false);
+    const [resultBlob, setResultBlob] = useState<Uint8Array | null>(null);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const mountedRef = useRef(true);
+    const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const selectedFile = e.target.files[0];
-            setFile(selectedFile);
-            setOriginalSize(selectedFile.size);
-            setState(ProcessState.IDLE);
-            setErrorMsg('');
-        }
-    };
+    const isProcessing = state === ProcessState.CONVERTING;
+    useWakeLock(isProcessing);
+    usePageVisibility();
 
-    const handleProceedToConfig = () => {
-        if (!file) {
-            setErrorMsg('Please select a PDF file');
+    useEffect(() => {
+        return () => {
+            mountedRef.current = false;
+            if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+        };
+    }, []);
+
+    const currentStep = !file ? -1 :
+        showConfig ? 1 :
+        state === ProcessState.CONVERTING ? 2 :
+        state === ProcessState.COMPLETED ? 3 : 0;
+
+    const validateAndSetFile = useCallback((selectedFile: File) => {
+        if (selectedFile.type !== 'application/pdf' && !selectedFile.name.toLowerCase().endsWith('.pdf')) {
+            setErrorMsg('Please select a valid PDF file.');
             return;
         }
-        setConversionStep('configure');
+        if (selectedFile.size > MAX_FILE_SIZE) {
+            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 50MB.`);
+            return;
+        }
+        setFile(selectedFile);
+        setOriginalSize(selectedFile.size);
+        setState(ProcessState.IDLE);
+        setShowConfig(false);
+        setErrorMsg('');
+        setProgress(0);
+        setProgressStatus('');
+        setResultBlob(null);
+        setCompressedSize(0);
+    }, []);
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) validateAndSetFile(e.target.files[0]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }, []);
+    const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }, []);
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault(); e.stopPropagation(); setIsDragging(false);
+        if (e.dataTransfer.files?.[0]) validateAndSetFile(e.dataTransfer.files[0]);
+    }, [validateAndSetFile]);
+
+    const handleProceedToConfig = async () => {
+        if (!file) { setErrorMsg('Please select a PDF file'); return; }
+
+        // Magic byte validation
+        try {
+            const header = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+            if (String.fromCharCode(...header).indexOf('%PDF') !== 0) {
+                setErrorMsg('This file does not appear to be a valid PDF (invalid file header).');
+                return;
+            }
+        } catch {
+            setErrorMsg('Failed to read the file. Please try selecting it again.');
+            return;
+        }
+
+        setShowConfig(true);
+        setErrorMsg('');
     };
 
     const handleConfigChange = (newConfig: CompressPdfConfig) => {
@@ -46,47 +116,89 @@ const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
     };
 
     const handleCompress = async (finalConfig: CompressPdfConfig) => {
+        if (!file) return;
+
         setState(ProcessState.CONVERTING);
-        setConversionStep('processing');
+        setShowConfig(false);
         setErrorMsg('');
+        setProgress(0);
+        setResultBlob(null);
+
+        // Simulate progress since compressPDF doesn't have progress callback
+        progressIntervalRef.current = setInterval(() => {
+            if (mountedRef.current) {
+                setProgress(prev => {
+                    if (prev >= 90) {
+                        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+                        progressIntervalRef.current = null;
+                        return prev;
+                    }
+                    return prev + 8;
+                });
+            }
+        }, 300);
 
         try {
-            const compressedPdf = await compressPDF(file!, finalConfig);
-            setCompressedSize(compressedPdf.length);
-            setState(ProcessState.COMPLETED);
-            setConversionStep('result');
+            setProgressStatus('Compressing your PDF...');
+            const compressedPdf = await compressPDF(file, finalConfig);
 
-            // Auto-download the compressed PDF
-            const fileName = file!.name.replace('.pdf', '_compressed.pdf');
-            downloadPDF(compressedPdf, fileName);
+            if (progressIntervalRef.current) { clearInterval(progressIntervalRef.current); progressIntervalRef.current = null; }
+            if (!mountedRef.current) return;
+
+            setProgress(100);
+            setProgressStatus('Compression complete!');
+            setCompressedSize(compressedPdf.length);
+            setResultBlob(compressedPdf);
+            setState(ProcessState.COMPLETED);
+
+            const baseName = file.name.replace(/\.pdf$/i, '');
+            downloadPDF(compressedPdf, `${baseName}_compressed.pdf`);
+            toast.success('PDF compressed successfully!');
         } catch (err) {
-            console.error(err);
-            setErrorMsg(err instanceof Error ? err.message : 'An unknown error occurred');
+            if (progressIntervalRef.current) { clearInterval(progressIntervalRef.current); progressIntervalRef.current = null; }
+            if (!mountedRef.current) return;
+
+            let errorMessage = 'An unknown error occurred';
+            if (err instanceof Error) {
+                errorMessage = err.message;
+                if (err.message.includes('password') || err.message.includes('encrypted')) {
+                    errorMessage = 'This PDF is password-protected. Please unlock it first using the Unlock PDF tool.';
+                } else if (err.message.includes('Invalid PDF')) {
+                    errorMessage = 'The file appears to be corrupted or is not a valid PDF.';
+                }
+            }
+
+            setErrorMsg(errorMessage);
+            toast.error('Compression failed');
             setState(ProcessState.IDLE);
-            setConversionStep('upload');
+            setShowConfig(false);
+            setProgress(0);
+            setProgressStatus('');
         }
     };
 
     const handleCancelConfig = () => {
-        setConversionStep('upload');
+        setShowConfig(false);
+    };
+
+    const handleDownloadAgain = () => {
+        if (!resultBlob || !file) return;
+        const baseName = file.name.replace(/\.pdf$/i, '');
+        downloadPDF(resultBlob, `${baseName}_compressed.pdf`);
+        toast.success('Download started!');
     };
 
     const handleReset = () => {
         setState(ProcessState.IDLE);
-        setConversionStep('upload');
+        setShowConfig(false);
         setFile(null);
         setConfig(undefined);
         setOriginalSize(0);
         setCompressedSize(0);
+        setProgress(0);
+        setProgressStatus('');
         setErrorMsg('');
-    };
-
-    const formatFileSize = (bytes: number): string => {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        setResultBlob(null);
     };
 
     const calculateReduction = (): string => {
@@ -98,17 +210,9 @@ const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
     return (
         <div className="detail-view animate-fade-in">
             <div className="container">
-                {/* Navigation */}
-                <button onClick={onBack} className="back-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-sm">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-                    </svg>
-                    Back to Dashboard
-                </button>
+                <BackButton onBack={onBack} />
 
-                {/* Main Interface Card */}
                 <div className="workspace-card">
-                    {/* Header */}
                     <div className="workspace-header">
                         <div className="workspace-icon-large">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-lg">
@@ -119,13 +223,28 @@ const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
                         <p className="workspace-desc">{tool.description}</p>
                     </div>
 
-                    {/* Functional Area */}
+                    <div style={{ padding: '1.5rem 1.5rem 0' }}>
+                        <StepProgress steps={STEPS} currentStep={currentStep} />
+                    </div>
+
                     <div className="workspace-body">
                         {errorMsg && (
-                            <div className="error-msg">{errorMsg}</div>
+                            <div className="error-msg">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="icon-sm" style={{ flexShrink: 0 }}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                </svg>
+                                <div style={{ flex: 1, textAlign: 'left' }}>
+                                    {errorMsg}
+                                    {file && (
+                                        <button onClick={handleProceedToConfig} style={{ display: 'block', marginTop: '0.5rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent)', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                            Try Again
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         )}
 
-                        {conversionStep === 'configure' ? (
+                        {showConfig ? (
                             <CompressPdfConfigComponent
                                 file={file!}
                                 onConfigChange={handleConfigChange}
@@ -136,114 +255,100 @@ const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
                             <>
                                 {file ? (
                                     <div>
-                                        {/* File Info */}
-                                        <div style={{ padding: '1.5rem', background: 'var(--surface-light)', borderRadius: '0.5rem', marginBottom: '2rem' }}>
+                                        <div style={{ padding: '1.5rem', background: 'var(--surface-light)', borderRadius: 'var(--radius-md)', marginBottom: '2rem' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-lg" style={{ color: 'var(--text-primary)' }}>
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                                                 </svg>
                                                 <div style={{ flex: 1 }}>
-                                                    <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
-                                                        {file.name}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>
-                                                        Original size: {formatFileSize(originalSize)}
+                                                    <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{file.name}</div>
+                                                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                                                        <span className="file-size">{formatFileSize(originalSize)}</span>
+                                                        <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>Ready to compress</span>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <div style={{ padding: '1rem', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '0.5rem' }}>
-                                                <div style={{ fontSize: '0.875rem', color: '#1E40AF', lineHeight: 1.6 }}>
+                                            <div style={{ padding: '1rem', background: 'var(--info-bg)', border: '1px solid color-mix(in srgb, var(--info) 40%, transparent)', borderRadius: 'var(--radius-sm)' }}>
+                                                <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
                                                     <strong>Note:</strong> Compression removes duplicate objects and optimizes the PDF structure.
-                                                    The amount of compression depends on the PDF content. Some PDFs may not compress significantly.
+                                                    The amount of compression depends on the PDF content.
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Action Buttons */}
                                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <button onClick={handleProceedToConfig} className="btn-action" style={{ flex: 1, maxWidth: 'none' }}>
-                                                Configure & Compress →
-                                            </button>
-                                            <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>
-                                                Select Different PDF
-                                            </button>
+                                            <button onClick={handleProceedToConfig} className="btn-action" style={{ flex: 1, maxWidth: 'none', marginTop: 0 }}>Configure & Compress</button>
+                                            <button onClick={handleReset} className="btn-secondary" style={{ flex: 1, maxWidth: 'none' }}>Select Different PDF</button>
                                         </div>
                                     </div>
                                 ) : (
                                     <div
-                                        className="upload-zone"
+                                        className={`upload-zone${isDragging ? ' drag-over' : ''}`}
+                                        role="button" tabIndex={0} aria-label="Upload PDF file"
                                         onClick={() => fileInputRef.current?.click()}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
+                                        onDragOver={handleDragOver} onDragEnter={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
                                     >
-                                        <input
-                                            type="file"
-                                            accept=".pdf,application/pdf"
-                                            ref={fileInputRef}
-                                            onChange={handleFileSelect}
-                                            style={{ display: 'none' }}
-                                        />
+                                        <input type="file" accept=".pdf,application/pdf" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} />
                                         <div className="upload-icon-wrapper">
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-lg">
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                                             </svg>
                                         </div>
-                                        <span style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: '0.5rem', color: '#2C2A26' }}>
-                                            Select a PDF to compress
+                                        <span style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                                            {isDragging ? 'Drop your PDF here' : 'Select a PDF to compress'}
                                         </span>
-                                        <span style={{ color: '#A8A29E', fontSize: '0.875rem' }}>
-                                            Click to browse or drag and drop
-                                        </span>
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>Click to browse or drag and drop</span>
                                     </div>
                                 )}
                             </>
                         ) : state === ProcessState.CONVERTING ? (
-                            <div className="result-area" style={{ padding: '3rem 0' }}>
-                                <div style={{ maxWidth: '200px', margin: '0 auto 2rem' }}>
+                            <div className="result-area" style={{ padding: '3rem 0' }} aria-live="polite">
+                                <div style={{ maxWidth: '300px', margin: '0 auto 2rem' }}>
                                     <div className="loader">
-                                        <div className="loader-bar"></div>
+                                        <div className="loader-bar" style={{ width: `${progress}%`, animation: progress > 0 ? 'none' : undefined }}></div>
                                     </div>
+                                    <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{Math.round(progress)}%</div>
                                 </div>
                                 <h3 className="workspace-title" style={{ fontSize: '1.5rem' }}>Compressing PDF...</h3>
-                                <p className="workspace-desc">Optimizing your document.</p>
+                                <p className="workspace-desc">{progressStatus || 'Optimizing your document.'}</p>
                             </div>
                         ) : (
                             <div className="result-area animate-fade-in">
-                                <div className="success-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="icon-lg">
+                                <div className="success-check-animated">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="#fff" width="28" height="28">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                                     </svg>
                                 </div>
-                                <h3 className="workspace-title" style={{ fontSize: '1.5rem' }}>Success!</h3>
-                                <p className="workspace-desc" style={{ marginBottom: '2rem' }}>
-                                    Your PDF has been compressed successfully.
-                                </p>
+                                <h3 className="workspace-title" style={{ fontSize: '1.5rem' }}>Compression Complete!</h3>
 
-                                {/* Compression Stats */}
-                                <div style={{ maxWidth: '400px', margin: '0 auto 2rem', padding: '1.5rem', background: 'var(--surface-light)', borderRadius: '0.5rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)' }}>
-                                        <span style={{ color: 'var(--text-secondary)' }}>Original Size:</span>
-                                        <strong style={{ color: 'var(--text-primary)' }}>{formatFileSize(originalSize)}</strong>
+                                {file && (
+                                    <div style={{ maxWidth: '400px', margin: '1.5rem auto', padding: '1.5rem', background: 'var(--surface-light)', borderRadius: 'var(--radius-md)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Original Size:</span>
+                                            <strong style={{ color: 'var(--text-primary)' }}>{formatFileSize(originalSize)}</strong>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Compressed Size:</span>
+                                            <strong style={{ color: 'var(--success)' }}>{formatFileSize(compressedSize)}</strong>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Size Reduction:</span>
+                                            <strong style={{ color: 'var(--success)' }}>{calculateReduction()}%</strong>
+                                        </div>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)' }}>
-                                        <span style={{ color: 'var(--text-secondary)' }}>Compressed Size:</span>
-                                        <strong style={{ color: '#059669' }}>{formatFileSize(compressedSize)}</strong>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: 'var(--text-secondary)' }}>Size Reduction:</span>
-                                        <strong style={{ color: '#059669' }}>{calculateReduction()}%</strong>
-                                    </div>
-                                </div>
+                                )}
 
+                                <p className="workspace-desc" style={{ marginBottom: '2rem' }}>Your file has been downloaded. Check your downloads folder.</p>
                                 <div className="action-row">
-                                    <button onClick={handleReset} className="btn-secondary">
-                                        Compress Another PDF
-                                    </button>
+                                    <button onClick={handleDownloadAgain} className="btn-secondary btn-primary-alt">Download Again</button>
+                                    <button onClick={handleReset} className="btn-secondary">Compress Another PDF</button>
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Footer */}
                     <div className="workspace-footer">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="icon-sm">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />

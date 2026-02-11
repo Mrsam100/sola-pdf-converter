@@ -163,7 +163,7 @@ export const CSP_POLICY = `
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     font-src 'self' https://fonts.gstatic.com;
     img-src 'self' data: blob:;
-    connect-src 'self' https://generativelanguage.googleapis.com;
+    connect-src 'self' blob: https://generativelanguage.googleapis.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://huggingface.co https://*.huggingface.co https://*.hf.co;
     worker-src 'self' blob:;
 `.replace(/\s+/g, ' ').trim();
 

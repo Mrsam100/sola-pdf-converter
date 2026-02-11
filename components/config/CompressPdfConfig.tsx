@@ -9,7 +9,6 @@
 
 import React, { useState, useMemo } from 'react';
 import type { CompressPdfConfig, CompressionLevel } from '../../types';
-import { DEFAULT_COMPRESS_PDF_CONFIG } from '../../types';
 import { configService } from '../../services/configService';
 import { PagePreview } from './PagePreview';
 

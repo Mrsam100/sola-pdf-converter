@@ -18,7 +18,13 @@ interface EmbedSignaturesOptions {
  * Convert a dataURL to a Uint8Array
  */
 function dataUrlToUint8Array(dataUrl: string): Uint8Array {
+  if (!dataUrl || !dataUrl.includes(',')) {
+    throw new Error('Invalid signature data. Please recreate your signature.');
+  }
   const base64 = dataUrl.split(',')[1];
+  if (!base64) {
+    throw new Error('Invalid signature data format.');
+  }
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
@@ -32,7 +38,9 @@ function dataUrlToUint8Array(dataUrl: string): Uint8Array {
  */
 function getImageType(dataUrl: string): 'png' | 'jpg' {
   if (dataUrl.startsWith('data:image/png')) return 'png';
-  return 'jpg';
+  if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) return 'jpg';
+  // Default to PNG for canvas-generated data URLs (most common case)
+  return 'png';
 }
 
 /**
@@ -64,12 +72,16 @@ export async function embedSignatures(options: EmbedSignaturesOptions): Promise<
     if (field.signatureId && !embeddedImages.has(field.signatureId)) {
       const sigData = signatures.get(field.signatureId);
       if (sigData) {
-        const imgBytes = dataUrlToUint8Array(sigData.dataUrl);
-        const imgType = getImageType(sigData.dataUrl);
-        const embedded = imgType === 'png'
-          ? await pdfDoc.embedPng(imgBytes)
-          : await pdfDoc.embedJpg(imgBytes);
-        embeddedImages.set(field.signatureId, embedded);
+        try {
+          const imgBytes = dataUrlToUint8Array(sigData.dataUrl);
+          const imgType = getImageType(sigData.dataUrl);
+          const embedded = imgType === 'png'
+            ? await pdfDoc.embedPng(imgBytes)
+            : await pdfDoc.embedJpg(imgBytes);
+          embeddedImages.set(field.signatureId, embedded);
+        } catch {
+          throw new Error(`Failed to process signature image. Please recreate your ${field.type} and try again.`);
+        }
       }
     }
   }

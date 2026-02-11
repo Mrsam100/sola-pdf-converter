@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
           output: {
             manualChunks: {
               'tesseract': ['tesseract.js'],
-              'whisper': ['@huggingface/transformers']
+              'ml-transformers': ['@huggingface/transformers']
             }
           }
         }

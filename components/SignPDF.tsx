@@ -7,6 +7,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Tool, SignatureData, PlacedField } from '../types';
 import { downloadPDF } from '../services/pdfService';
 import { embedSignatures } from '../services/signPdfService';
+import { formatFileSize } from '../utils/formatFileSize';
+import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
 import { toast } from '../hooks/useToast';
 import BackButton from './BackButton';
 
@@ -64,7 +66,6 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
   const canvasAreaRef = useRef<HTMLDivElement>(null);
   const [placedFields, setPlacedFields] = useState<PlacedField[]>([]);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-  const [signatureType, setSignatureType] = useState<'simple' | 'digital'>('simple');
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [pageScales, setPageScales] = useState<Map<number, { scaleX: number; scaleY: number; pageWidth: number; pageHeight: number }>>(new Map());
 
@@ -91,20 +92,55 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
 
   // Thumbnail refs
   const [thumbnails, setThumbnails] = useState<Map<number, string>>(new Map());
+  const [isDragging, setIsDragging] = useState(false);
+  const mountedRef = useRef(true);
+
+  const isSaving = saving;
+  useWakeLock(isSaving);
+  usePageVisibility();
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      // Destroy pdf.js document to free memory
+      if (pdfDocRef.current) {
+        pdfDocRef.current.destroy?.();
+        pdfDocRef.current = null;
+      }
+    };
+  }, []);
 
   // ============ UPLOAD SCREEN ============
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const validatePdfFile = useCallback(async (f: File): Promise<boolean> => {
+    if (!f.type.includes('pdf') && !f.name.toLowerCase().endsWith('.pdf')) {
+      setErrorMsg('Please select a PDF file.');
+      return false;
+    }
+    if (f.size > 50 * 1024 * 1024) {
+      setErrorMsg(`File is too large (${formatFileSize(f.size)}). Maximum size is 50MB.`);
+      return false;
+    }
+    // Magic byte validation
+    try {
+      const header = new Uint8Array(await f.slice(0, 5).arrayBuffer());
+      if (String.fromCharCode(...header).indexOf('%PDF') !== 0) {
+        setErrorMsg('This file does not appear to be a valid PDF (invalid file header).');
+        return false;
+      }
+    } catch {
+      setErrorMsg('Failed to read the file. Please try again.');
+      return false;
+    }
+    return true;
+  }, []);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const f = e.target.files[0];
-      if (!f.type.includes('pdf') && !f.name.toLowerCase().endsWith('.pdf')) {
-        setErrorMsg('Please select a PDF file.');
-        return;
-      }
-      if (f.size > 50 * 1024 * 1024) {
-        setErrorMsg('File is too large. Maximum size is 50MB.');
-        return;
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      const valid = await validatePdfFile(f);
+      if (!valid || !mountedRef.current) return;
       setFile(f);
       setFileName(f.name);
       setErrorMsg('');
@@ -112,15 +148,14 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsDragging(false);
     const f = e.dataTransfer.files[0];
     if (f) {
-      if (!f.type.includes('pdf') && !f.name.toLowerCase().endsWith('.pdf')) {
-        setErrorMsg('Please select a PDF file.');
-        return;
-      }
+      const valid = await validatePdfFile(f);
+      if (!valid || !mountedRef.current) return;
       setFile(f);
       setFileName(f.name);
       setErrorMsg('');
@@ -131,6 +166,13 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
   };
 
   // ============ MODE SELECTION ============
@@ -223,13 +265,20 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const f = e.target.files[0];
+      if (imageInputRef.current) imageInputRef.current.value = '';
       if (!f.type.startsWith('image/')) {
-        toast.error('Please select an image file (PNG, JPG)');
+        toast.error('Please select an image file (PNG, JPG).');
+        return;
+      }
+      if (f.size > 2 * 1024 * 1024) {
+        toast.error('Signature image is too large. Maximum size is 2MB.');
         return;
       }
       const reader = new FileReader();
       reader.onload = (ev) => {
-        setUploadedImage(ev.target?.result as string);
+        if (mountedRef.current && ev.target?.result) {
+          setUploadedImage(ev.target.result as string);
+        }
       };
       reader.readAsDataURL(f);
     }
@@ -237,7 +286,8 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
 
   const renderSignatureToDataUrl = useCallback((text: string, font: string, color: string): string => {
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not create canvas context');
     const fontSize = 48;
     ctx.font = `${fontSize}px ${font}`;
     const metrics = ctx.measureText(text);
@@ -337,7 +387,8 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
       canvas.height = viewport.height;
       setCanvasSize({ width: viewport.width, height: viewport.height });
 
-      const ctx = canvas.getContext('2d')!;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
       await page.render({ canvasContext: ctx, viewport }).promise;
 
       // Store scale for coordinate conversion
@@ -361,8 +412,11 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
     if (!file) return;
     try {
       const { pdfjsLib } = await import('../services/pdfConfig');
+      if (!mountedRef.current) return;
       const arrayBuffer = await file.arrayBuffer();
+      if (!mountedRef.current) return;
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      if (!mountedRef.current) { pdf.destroy?.(); return; }
       pdfDocRef.current = pdf;
       setTotalPages(pdf.numPages);
       setPdfReady(true);
@@ -371,18 +425,20 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
       // Generate thumbnails
       const thumbs = new Map<number, string>();
       for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
+        if (!mountedRef.current) return;
         const page = await pdf.getPage(i);
         const viewport = page.getViewport({ scale: 0.2 });
         const canvas = document.createElement('canvas');
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d')!;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
         await page.render({ canvasContext: ctx, viewport }).promise;
         thumbs.set(i, canvas.toDataURL());
       }
-      setThumbnails(thumbs);
+      if (mountedRef.current) setThumbnails(thumbs);
     } catch {
-      toast.error('Failed to load PDF. The file may be corrupted.');
+      if (mountedRef.current) toast.error('Failed to load PDF. The file may be corrupted.');
     }
   }, [file]);
 
@@ -607,6 +663,12 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
 
   // ============ EXPORT ============
 
+  const getOutputName = useCallback((name: string): string => {
+    const lastDot = name.lastIndexOf('.pdf');
+    if (lastDot === -1) return name + '_signed.pdf';
+    return name.substring(0, lastDot) + '_signed.pdf';
+  }, []);
+
   const handleSign = async () => {
     if (!file || placedFields.length === 0) {
       toast.error('Please place at least one signature field on the document.');
@@ -622,19 +684,26 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
         signerName,
         pageScales,
       });
+      if (!mountedRef.current) return;
       setResultBlob(result);
-      const outputName = fileName.replace('.pdf', '_signed.pdf');
+      const outputName = getOutputName(fileName);
       downloadPDF(result, outputName);
       toast.success('PDF signed successfully!');
       setStep('result');
     } catch (err) {
+      if (!mountedRef.current) return;
       toast.error(err instanceof Error ? err.message : 'Failed to sign PDF');
     } finally {
-      setSaving(false);
+      if (mountedRef.current) setSaving(false);
     }
   };
 
   const handleReset = () => {
+    // Destroy pdf.js document to free memory
+    if (pdfDocRef.current) {
+      pdfDocRef.current.destroy?.();
+      pdfDocRef.current = null;
+    }
     setStep('upload');
     setFile(null);
     setFileName('');
@@ -652,13 +721,12 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
     setCurrentPage(0);
     setTotalPages(0);
     setPageScales(new Map());
-    pdfDocRef.current = null;
+    setUploadedImage(null);
   };
 
   const handleDownloadAgain = () => {
     if (resultBlob) {
-      const outputName = fileName.replace('.pdf', '_signed.pdf');
-      downloadPDF(resultBlob, outputName);
+      downloadPDF(resultBlob, getOutputName(fileName));
     }
   };
 
@@ -671,14 +739,6 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
       case 'name': return 'Name';
       case 'date': return 'Date';
     }
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
   // ============ RENDER: UPLOAD SCREEN ============
@@ -699,12 +759,17 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
               <p className="workspace-desc">{tool.description}</p>
             </div>
             <div className="workspace-body">
-              {errorMsg && <div className="error-msg">{errorMsg}</div>}
+              {errorMsg && <div className="error-msg" role="alert" aria-live="assertive">{errorMsg}</div>}
               <div
-                className="upload-zone"
+                className={`upload-zone${isDragging ? ' drag-over' : ''}`}
                 onClick={() => fileInputRef.current?.click()}
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
+                aria-label="Upload PDF file to sign"
               >
                 <input
                   type="file"
@@ -1245,29 +1310,6 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
 
           {/* Signing panel (right sidebar) */}
           <div className="tool-panel sign-panel">
-            {/* Signature type */}
-            <div className="tool-panel-section">
-              <div className="tool-panel-label">Type</div>
-              <label className="sign-type-radio">
-                <input
-                  type="radio"
-                  name="sigType"
-                  checked={signatureType === 'simple'}
-                  onChange={() => setSignatureType('simple')}
-                />
-                <span>Simple Signature</span>
-              </label>
-              <label className="sign-type-radio">
-                <input
-                  type="radio"
-                  name="sigType"
-                  checked={signatureType === 'digital'}
-                  onChange={() => setSignatureType('digital')}
-                />
-                <span>Digital Signature</span>
-              </label>
-            </div>
-
             {/* Required fields */}
             <div className="tool-panel-section">
               <div className="tool-panel-label">Required fields</div>
@@ -1414,14 +1456,14 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
           <BackButton onBack={onBack} />
           <div className="workspace-card">
             <div className="workspace-header">
-              <div className="success-icon">
+              <div className="success-check-animated">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="icon-lg">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                 </svg>
               </div>
               <h1 className="workspace-title" style={{ fontSize: '1.5rem' }}>Your PDF has been signed!</h1>
               <p className="workspace-desc" style={{ marginTop: '0.5rem' }}>
-                {fileName.replace('.pdf', '_signed.pdf')} has been downloaded.
+                {getOutputName(fileName)} has been downloaded.
               </p>
             </div>
             <div className="workspace-body" style={{ textAlign: 'center' }}>
