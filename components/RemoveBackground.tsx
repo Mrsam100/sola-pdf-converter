@@ -54,6 +54,7 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
     const [mlStatus, setMlStatus] = useState<string>('');
     const [fallbackUsed, setFallbackUsed] = useState(false);
     const [elapsedSec, setElapsedSec] = useState(0);
+    const [retryCount, setRetryCount] = useState(0);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
@@ -222,7 +223,9 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
         setProcessedBlob(null);
 
         try {
+            // 🔥 SIMPLIFIED: Always use AI mode - works for ALL backgrounds
             const result = await removeBackground(file, {
+                mode: 'ai',
                 onProgress: (progress, status) => {
                     if (mountedRef.current) {
                         setMlProgress(progress);
@@ -245,15 +248,29 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
             downloadBlob(result.blob, `${safeName}_no_bg.png`);
 
             toast.success('Background removed successfully!');
+            setRetryCount(0); // Reset retry count on success
         } catch (err) {
             if (!mountedRef.current) return;
 
+            // 🔥 FIX: Show actual error message with recovery options
             const errorMessage = err instanceof Error ? err.message : 'Failed to remove background. Please try again.';
             setErrorMsg(errorMessage);
             setState(ProcessState.IDLE);
             setMlProgress(0);
             setMlStatus('');
-            toast.error('Background removal failed.');
+
+            // Show toast with retry suggestion
+            const isNetworkError = errorMessage.toLowerCase().includes('download') ||
+                                   errorMessage.toLowerCase().includes('network') ||
+                                   errorMessage.toLowerCase().includes('fetch');
+
+            if (isNetworkError) {
+                toast.error('Network error. Check your connection and retry.');
+            } else {
+                toast.error('Background removal failed. See error details below.');
+            }
+
+            setRetryCount(prev => prev + 1);
         } finally {
             processingRef.current = false;
         }
@@ -307,7 +324,62 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
 
                         {errorMsg && (
                             <div className="error-msg" role="alert" aria-live="assertive">
-                                {errorMsg}
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="icon-sm" style={{ flexShrink: 0 }}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                </svg>
+                                <div style={{ flex: 1, textAlign: 'left' }}>
+                                    <strong>Error:</strong> {errorMsg}
+
+                                    {/* Recovery suggestions */}
+                                    <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                                        <strong>Try these solutions:</strong>
+                                        <ul style={{ margin: '0.5rem 0 0 1.25rem', paddingLeft: 0 }}>
+                                            {errorMsg.toLowerCase().includes('network') || errorMsg.toLowerCase().includes('download') || errorMsg.toLowerCase().includes('fetch') ? (
+                                                <>
+                                                    <li>Check your internet connection</li>
+                                                    <li>Try again in a few minutes</li>
+                                                    <li>Use a different network (WiFi/mobile data)</li>
+                                                </>
+                                            ) : errorMsg.toLowerCase().includes('memory') || errorMsg.toLowerCase().includes('oom') ? (
+                                                <>
+                                                    <li>Close other browser tabs to free up memory</li>
+                                                    <li>Try a smaller image (resize it first)</li>
+                                                    <li>Restart your browser</li>
+                                                </>
+                                            ) : errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('took too long') ? (
+                                                <>
+                                                    <li>Your connection may be too slow</li>
+                                                    <li>Try again with a better/faster connection</li>
+                                                    <li>Wait a few minutes and retry</li>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <li>Click "Try Again" below to retry</li>
+                                                    <li>Refresh the page if issue persists</li>
+                                                    <li>Try a different image</li>
+                                                </>
+                                            )}
+                                        </ul>
+                                    </div>
+
+                                    {/* Retry buttons */}
+                                    <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <button
+                                            onClick={handleRemoveBackground}
+                                            className="btn-secondary btn-primary-alt"
+                                            style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}
+                                        >
+                                            Try Again
+                                        </button>
+                                        <button
+                                            onClick={() => window.location.reload()}
+                                            className="btn-secondary"
+                                            style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}
+                                        >
+                                            Refresh Page
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
@@ -498,22 +570,6 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
                                     </div>
                                 </div>
 
-                                {/* Fallback notification — only if AI was unavailable */}
-                                {fallbackUsed && (
-                                    <div style={{
-                                        padding: '0.75rem 1rem',
-                                        background: 'color-mix(in srgb, var(--warning, #f59e0b) 12%, var(--surface-white, #fff))',
-                                        border: '1px solid color-mix(in srgb, var(--warning, #f59e0b) 40%, transparent)',
-                                        borderRadius: '0.5rem',
-                                        marginBottom: '1.5rem',
-                                        textAlign: 'center',
-                                        fontSize: '0.8125rem',
-                                        color: 'var(--text-secondary)',
-                                    }}>
-                                        AI model was unavailable. A basic algorithm was used instead, which works best with solid-color backgrounds.
-                                        Try again later for better results.
-                                    </div>
-                                )}
 
                                 <div className="action-row">
                                     <button

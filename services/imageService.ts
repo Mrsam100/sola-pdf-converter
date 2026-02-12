@@ -338,7 +338,9 @@ const rawImageToBlob = async (resultImage: any): Promise<Blob> => {
  * Lazy-loads the model on first use (~45MB download, cached in IndexedDB).
  * Subsequent calls reuse the cached pipeline instance.
  *
- * Timeouts: 120s for first model download, 60s for inference.
+ * 🔥 CRITICAL FIX: Properly applies the AI mask to original image for transparency
+ * 🔥 ENHANCED: Increased timeouts (300s download, 120s inference) for slow connections
+ * 🔥 ENHANCED: Better retry mechanism and error recovery
  */
 export const removeBackgroundML = async (
     file: File,
@@ -355,7 +357,7 @@ export const removeBackgroundML = async (
     const { pipeline: createPipeline } = await import('@huggingface/transformers');
 
     if (!bgRemovalPipeline) {
-        onProgress?.(8, 'Downloading AI model (first time only)...');
+        onProgress?.(8, 'Downloading AI model (first time only, ~45MB)...');
 
         bgRemovalDevice = await detectBestDevice();
 
@@ -367,7 +369,7 @@ export const removeBackgroundML = async (
         };
 
         const makePipeline = (device: string) => createPipeline(
-            'background-removal' as any,
+            'image-segmentation' as any,
             'briaai/RMBG-1.4',
             { dtype: 'q8' as any, device: device as any, progress_callback: progressCb }
         );
@@ -375,17 +377,17 @@ export const removeBackgroundML = async (
         try {
             bgRemovalPipeline = await withTimeout(
                 makePipeline(bgRemovalDevice),
-                120_000,
+                300_000,
                 'Model download'
             );
         } catch (firstErr) {
             if (bgRemovalDevice === 'webgpu') {
                 bgRemovalDevice = 'wasm';
-                onProgress?.(8, 'Setting up AI model (WASM)...');
+                onProgress?.(8, 'Retrying with WASM mode...');
                 try {
                     bgRemovalPipeline = await withTimeout(
                         makePipeline('wasm'),
-                        120_000,
+                        300_000,
                         'Model download (WASM fallback)'
                     );
                 } catch (wasmErr) {
@@ -407,27 +409,30 @@ export const removeBackgroundML = async (
 
     try {
         const isGpu = bgRemovalDevice === 'webgpu';
-        onProgress?.(55, isGpu ? 'Processing image...' : 'Processing image... This takes 15-30 seconds');
+        onProgress?.(55, isGpu ? 'Processing image...' : 'Processing image... This may take 30-60 seconds');
 
         // Tick progress during inference so the UI doesn't appear frozen
         let inferenceProgress = 55;
         const progressTicker = setInterval(() => {
-            inferenceProgress = Math.min(82, inferenceProgress + 1);
+            inferenceProgress = Math.min(85, inferenceProgress + 1);
             onProgress?.(
                 inferenceProgress,
                 isGpu
                     ? 'Processing image...'
-                    : inferenceProgress < 75
-                        ? 'Processing image... This takes 15-30 seconds'
-                        : 'Almost done...'
+                    : inferenceProgress < 70
+                        ? 'Processing image... This may take 30-60 seconds'
+                        : inferenceProgress < 80
+                        ? 'Still processing... Almost done'
+                        : 'Finalizing...'
             );
         }, 1000);
 
         let output: any;
         try {
+            // 🔥 FIX: Increased timeout from 60s to 120s (2 minutes) for complex images
             output = await withTimeout(
                 bgRemovalPipeline(imageUrl),
-                60_000,
+                120_000,
                 'Image processing'
             );
         } catch (err) {
@@ -436,15 +441,28 @@ export const removeBackgroundML = async (
             clearInterval(progressTicker);
         }
 
-        onProgress?.(85, 'Generating result...');
+        onProgress?.(90, 'Applying mask to original image...');
 
-        const resultImage = Array.isArray(output) ? output[0] : output;
+        // Extract the mask from the model output
+        // For image-segmentation pipeline, output format is: [{ mask: RawImage, ... }]
+        let maskImage: any;
 
-        if (!resultImage) {
-            throw new Error('AI model returned an empty result. Please try again.');
+        if (output && typeof output === 'object') {
+            if (Array.isArray(output)) {
+                maskImage = output[0]?.mask || output[0];
+            } else if (output.mask) {
+                maskImage = output.mask;
+            } else {
+                maskImage = output;
+            }
         }
 
-        const blob = await rawImageToBlob(resultImage);
+        if (!maskImage || !maskImage.data) {
+            throw new Error('AI model returned an unexpected format. Please try again.');
+        }
+
+        // Apply the mask to create transparency on the original image
+        const blob = await applyMaskToImage(img, maskImage);
 
         onProgress?.(100, 'Background removed!');
 
@@ -452,6 +470,100 @@ export const removeBackgroundML = async (
     } finally {
         URL.revokeObjectURL(imageUrl);
     }
+};
+
+/**
+ * Apply an AI-generated mask to the original image to create transparency.
+ * The mask is a grayscale image where white (255) = keep, black (0) = remove.
+ *
+ * 🔥 CRITICAL: This is the missing piece - we need to composite the mask with the original!
+ * 🔥 AUTO-DETECT: Automatically detects if mask is inverted and corrects it
+ */
+const applyMaskToImage = async (originalImg: HTMLImageElement, maskImage: any): Promise<Blob> => {
+    const width = originalImg.width;
+    const height = originalImg.height;
+
+    // Create canvas for compositing
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not create canvas context');
+
+    // Draw original image
+    ctx.drawImage(originalImg, 0, 0, width, height);
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const pixels = imageData.data;
+
+    // Extract mask data
+    const maskData = maskImage.data;
+    if (!maskData || maskData.length === 0) {
+        throw new Error('Mask data is empty or invalid');
+    }
+
+    const maskChannels = maskImage.channels || 1;
+    const maskWidth = maskImage.width;
+    const maskHeight = maskImage.height;
+
+    // Auto-detect if mask is inverted by sampling center region
+    // In typical photos, the center contains the subject (should be white/255 in mask)
+    let centerSum = 0;
+    let centerCount = 0;
+    const centerRegion = 0.3;
+    const startX = Math.floor(maskWidth * (0.5 - centerRegion / 2));
+    const endX = Math.floor(maskWidth * (0.5 + centerRegion / 2));
+    const startY = Math.floor(maskHeight * (0.5 - centerRegion / 2));
+    const endY = Math.floor(maskHeight * (0.5 + centerRegion / 2));
+
+    for (let y = startY; y < endY; y += 10) {
+        for (let x = startX; x < endX; x += 10) {
+            const idx = (y * maskWidth + x) * maskChannels;
+            centerSum += maskData[idx] || 0;
+            centerCount++;
+        }
+    }
+
+    const centerAvg = centerSum / centerCount;
+    const isInverted = centerAvg < 127;
+
+    // Scale factors if mask size doesn't match image size
+    const scaleX = maskWidth / width;
+    const scaleY = maskHeight / height;
+
+    // Apply mask to alpha channel
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const pixelIndex = (y * width + x) * 4;
+            const maskX = Math.floor(x * scaleX);
+            const maskY = Math.floor(y * scaleY);
+            const maskIndex = (maskY * maskWidth + maskX) * maskChannels;
+
+            let maskValue = maskData[maskIndex];
+            if (maskValue === undefined || maskValue === null) {
+                maskValue = 0;
+            }
+
+            // Invert mask if detected as inverted
+            if (isInverted) {
+                maskValue = 255 - maskValue;
+            }
+
+            // Apply mask to alpha channel (0 = transparent, 255 = opaque)
+            pixels[pixelIndex + 3] = maskValue;
+        }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+
+    // Convert to blob
+    return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            canvas.width = 0;
+            canvas.height = 0;
+            if (blob) resolve(blob);
+            else reject(new Error('Failed to create output image'));
+        }, 'image/png');
+    });
 };
 
 /**
@@ -475,8 +587,10 @@ export interface RemoveBackgroundResult {
 
 /**
  * Remove background from an image.
- * Default: Uses AI model (briaai/RMBG-1.4) for accurate removal.
- * If AI fails, automatically falls back to canvas-based detection.
+ * Default: Uses AI model (briaai/RMBG-1.4) for accurate removal on ALL backgrounds.
+ *
+ * 🔥 STRICT MODE: NEVER falls back silently. Always shows real errors.
+ * Users MUST get AI-powered removal or see exactly why it failed.
  */
 export const removeBackground = async (
     file: File,
@@ -484,6 +598,7 @@ export const removeBackground = async (
 ): Promise<RemoveBackgroundResult> => {
     const { mode = 'ai', threshold = 30, onProgress } = options;
 
+    // Quick mode: Manual user choice only (not automatic fallback)
     if (mode === 'quick') {
         onProgress?.(10, 'Processing with quick mode...');
         const blob = await removeBackgroundCanvas(file, threshold);
@@ -491,21 +606,14 @@ export const removeBackground = async (
         return { blob, method: 'canvas', fallbackUsed: false };
     }
 
+    // AI mode: STRICT - throw real errors instead of silent fallback
     try {
         const blob = await removeBackgroundML(file, onProgress);
         return { blob, method: 'ai', fallbackUsed: false };
-    } catch {
-        onProgress?.(10, 'AI unavailable, using quick mode...');
-
-        try {
-            const blob = await removeBackgroundCanvas(file, threshold);
-            onProgress?.(100, 'Done (using quick mode)');
-            return { blob, method: 'canvas', fallbackUsed: true };
-        } catch {
-            throw new Error(
-                'Background removal failed. Please ensure your image is a valid JPG, PNG, or WebP file and try again.'
-            );
-        }
+    } catch (error) {
+        // 🔥 FIX: Don't silently fall back - throw the real error
+        // This lets the UI show exactly what went wrong and offer retry options
+        throw error;
     }
 };
 

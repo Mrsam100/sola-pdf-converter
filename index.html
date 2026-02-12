@@ -36,18 +36,8 @@
     <meta name="twitter:description" content="Free, browser-based file conversion. 20+ tools for PDF, image, audio processing. 100% client-side — your files never leave your device." />
 
     <!-- Security Headers -->
-    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-    <meta http-equiv="X-Frame-Options" content="DENY" />
-    <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
-
-    <!-- Permissions Policy - Restrict browser features -->
-    <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()" />
-
-    <!-- Content Security Policy - PRODUCTION HARDENED 🔒 -->
-    <!-- Removed 'unsafe-inline' and 'unsafe-eval' for maximum XSS protection -->
-    <!-- All inline scripts moved to /scripts/init.js -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob: https://generativelanguage.googleapis.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://huggingface.co https://*.huggingface.co https://*.hf.co; worker-src 'self' blob: https://cdn.jsdelivr.net; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;" />
+    <!-- Note: All security headers (CSP, X-Frame-Options, etc.) are configured via Vite -->
+    <!-- See vite.config.ts for production-grade security configuration with WebAssembly support -->
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

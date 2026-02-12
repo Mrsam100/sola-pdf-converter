@@ -19,7 +19,6 @@
     "test:all": "npm run test:run && npm run test:e2e"
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
     "@huggingface/transformers": "^3.8.1",
     "docx": "^9.5.1",
     "jszip": "^3.10.1",
