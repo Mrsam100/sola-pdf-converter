@@ -52,6 +52,12 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
             return;
         }
 
+        // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid Word document.');
+            return;
+        }
+
         // Validate file size
         if (selectedFile.size > MAX_FILE_SIZE) {
             setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 25MB.`);
@@ -100,12 +106,35 @@ const WordToPDF: React.FC<WordToPDFProps> = ({ tool, onBack }) => {
             return;
         }
 
-        // Magic byte validation: .docx files are ZIP archives starting with PK\x03\x04
+        /**
+         * 🔒 SECURITY: Strengthened .docx validation
+         *
+         * Problem: Old code accepted ANY ZIP file as .docx
+         * Solution: Verify it's actually Office Open XML by checking for specific files
+         */
         try {
+            // Step 1: Check ZIP magic bytes (PK\x03\x04)
             const headerBytes = new Uint8Array(await file.slice(0, 4).arrayBuffer());
             if (headerBytes[0] !== 0x50 || headerBytes[1] !== 0x4B ||
                 headerBytes[2] !== 0x03 || headerBytes[3] !== 0x04) {
                 setErrorMsg('This file does not appear to be a valid Word document (invalid file header). Please select a .docx file.');
+                return;
+            }
+
+            // Step 2: 🔒 SECURITY: Verify it's actually a .docx (not just any ZIP)
+            // Check for Office Open XML structure by looking for [Content_Types].xml
+            const arrayBuffer = await file.arrayBuffer();
+            const textDecoder = new TextDecoder();
+            const content = textDecoder.decode(new Uint8Array(arrayBuffer).slice(0, 10000));
+
+            // .docx files MUST contain these files in the ZIP:
+            // - [Content_Types].xml (Office Open XML manifest)
+            // - word/document.xml (main Word document)
+            const hasContentTypes = content.includes('[Content_Types].xml');
+            const hasWordDocument = content.includes('word/document.xml') || content.includes('word/document');
+
+            if (!hasContentTypes || !hasWordDocument) {
+                setErrorMsg('❌ This ZIP file is not a valid Word document (.docx). .docx files must contain Office Open XML structure. Please select a valid .docx file created by Microsoft Word or compatible software.');
                 return;
             }
         } catch {

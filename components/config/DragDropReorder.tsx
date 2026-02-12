@@ -42,7 +42,12 @@ export const DragDropReorder: React.FC<DragDropReorderProps> = ({
   const handleDragStart = (e: DragEvent<HTMLDivElement>, index: number) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+
+    // 🔒 SECURITY FIX: Use text/plain instead of text/html to prevent XSS attacks
+    // Only transfer the index, not HTML content that could contain malicious scripts
+    // Previously used: e.dataTransfer.setData('text/html', e.currentTarget.innerHTML)
+    // This was vulnerable to XSS if innerHTML contained <script> or event handlers
+    e.dataTransfer.setData('text/plain', index.toString());
 
     // Add visual feedback
     e.currentTarget.style.opacity = '0.5';

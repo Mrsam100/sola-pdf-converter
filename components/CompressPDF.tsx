@@ -25,7 +25,7 @@ const STEPS = [
     { label: 'Complete' },
 ];
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB (increased from 50MB for compression)
 
 const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
@@ -65,8 +65,12 @@ const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
             setErrorMsg('Please select a valid PDF file.');
             return;
         }
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
+            return;
+        }
         if (selectedFile.size > MAX_FILE_SIZE) {
-            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 50MB.`);
+            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 200MB.`);
             return;
         }
         setFile(selectedFile);
@@ -147,6 +151,19 @@ const CompressPDF: React.FC<CompressPDFProps> = ({ tool, onBack }) => {
 
             setProgress(100);
             setProgressStatus('Compression complete!');
+
+            // 🔒 VALIDATION FIX: Check if compression actually reduced file size
+            if (compressedPdf.length >= file.size) {
+                const increase = ((compressedPdf.length - file.size) / file.size) * 100;
+                setErrorMsg(`⚠️ Compression did not reduce file size. The result is ${increase >= 0 ? increase.toFixed(1) + '% larger' : 'the same size'}. This can happen with already-optimized PDFs.\n\n💡 Tip: Try downloading the original file or adjusting compression settings.`);
+                toast.warning('Compression had no effect');
+                setState(ProcessState.IDLE);
+                setShowConfig(false);
+                setProgress(0);
+                setProgressStatus('');
+                return;
+            }
+
             setCompressedSize(compressedPdf.length);
             setResultBlob(compressedPdf);
             setState(ProcessState.COMPLETED);

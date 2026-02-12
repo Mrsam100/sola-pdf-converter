@@ -4,6 +4,7 @@
  */
 
 import { logger } from './monitoring';
+import { validateFileMagicBytes, isMaliciousFile } from './magicByteValidator';
 
 /**
  * Comprehensive Input Validation and Sanitization Utilities
@@ -181,13 +182,20 @@ export const scanFileContent = async (file: File): Promise<{ safe: boolean; thre
     return { safe: true };
   } catch (error) {
     logger.error('File content scan error', { error });
-    // Fail open to not block legitimate files
-    return { safe: true };
+    // 🔒 FAIL-CLOSED SECURITY: If we can't scan the file, reject it
+    // This prevents malicious files from bypassing security checks
+    // Better to show an error than to allow potential malware
+    return {
+      safe: false,
+      threat: 'Unable to verify file safety. Please try again or contact support if the issue persists.'
+    };
   }
 };
 
 /**
- * Comprehensive file validation
+ * Comprehensive file validation with magic byte verification
+ *
+ * 🔒 SECURITY: Multi-layer validation prevents MIME type spoofing attacks
  */
 export const validateFile = async (
   file: File,
@@ -206,28 +214,64 @@ export const validateFile = async (
       return { valid: false, error: 'Invalid filename' };
     }
 
-    // 3. Validate file type
+    // 3. 🔒 SECURITY: Magic byte validation (prevents MIME type spoofing)
+    // This is the primary defense against malicious files pretending to be PDFs/images
+    const magicByteResult = await validateFileMagicBytes(file, category, {
+      allowMimeTypeFallback: true, // Allow fallback to MIME type for edge cases
+      maxBytesToRead: 512
+    });
+
+    if (!magicByteResult.valid) {
+      logger.warn('Magic byte validation failed', {
+        fileName: file.name,
+        category,
+        error: magicByteResult.error
+      });
+      return { valid: false, error: magicByteResult.error };
+    }
+
+    // Log warning if magic byte validation passed with warnings
+    if (magicByteResult.warning) {
+      logger.warn('Magic byte validation warning', {
+        fileName: file.name,
+        warning: magicByteResult.warning
+      });
+    }
+
+    // 4. Validate file type (extension + MIME type) as secondary check
     const typeValidation = validateFileType(file, category);
     if (!typeValidation.valid) {
       return typeValidation;
     }
 
-    // 4. Validate file size
+    // 5. Validate file size
     const sizeValidation = validateFileSize(file, category);
     if (!sizeValidation.valid) {
       return sizeValidation;
     }
 
-    // 5. Scan for malicious content
+    // 6. 🔒 SECURITY: Check for malicious file signatures (executables, scripts)
+    const isMalicious = await isMaliciousFile(file);
+    if (isMalicious) {
+      logger.error('Malicious file detected', { fileName: file.name });
+      return {
+        valid: false,
+        error: '❌ Security Alert: This file appears to be an executable or script. Only document files are allowed for security reasons.'
+      };
+    }
+
+    // 7. Scan for malicious content patterns
     const contentScan = await scanFileContent(file);
     if (!contentScan.safe) {
       return { valid: false, error: contentScan.threat };
     }
 
-    logger.info('File validation passed', {
+    logger.info('File validation passed (all security checks)', {
       fileName: file.name,
       size: file.size,
-      type: file.type
+      type: file.type,
+      detectedType: magicByteResult.detectedType,
+      category
     });
 
     return { valid: true };
@@ -298,15 +342,105 @@ export const validateRange = (
 };
 
 /**
- * Prevent prototype pollution
+ * Prevent prototype pollution attacks
+ *
+ * 🔒 SECURITY: Protects against prototype pollution via __proto__, constructor, prototype
+ *
+ * Attack examples this prevents:
+ * 1. obj['__proto__']['isAdmin'] = true
+ * 2. obj.constructor.prototype.isAdmin = true
+ * 3. JSON.parse('{"__proto__": {"isAdmin": true}}')
+ *
+ * Implementation:
+ * - Creates object with null prototype (no inherited properties)
+ * - Only copies own properties (not inherited ones)
+ * - Blocks dangerous property names explicitly
+ * - Recursively sanitizes nested objects
  */
 export const sanitizeObject = <T extends Record<string, any>>(obj: T): T => {
-  const sanitized = { ...obj };
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
 
-  // Remove dangerous properties
-  delete sanitized.__proto__;
-  delete sanitized.constructor;
-  delete sanitized.prototype;
+  // Create object with null prototype (no __proto__, constructor, etc.)
+  const sanitized = Object.create(null) as T;
+
+  // Dangerous property names to block
+  const dangerousKeys = new Set([
+    '__proto__',
+    'constructor',
+    'prototype',
+    '__defineGetter__',
+    '__defineSetter__',
+    '__lookupGetter__',
+    '__lookupSetter__'
+  ]);
+
+  // Only copy own properties (not inherited)
+  for (const key of Object.keys(obj)) {
+    // Skip dangerous keys
+    if (dangerousKeys.has(key)) {
+      logger.warn('Blocked dangerous property in object sanitization', { key });
+      continue;
+    }
+
+    // Validate key is safe (alphanumeric + underscore + hyphen)
+    if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
+      logger.warn('Blocked unsafe property name', { key });
+      continue;
+    }
+
+    // Recursively sanitize nested objects
+    const value = obj[key];
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      sanitized[key as keyof T] = sanitizeObject(value);
+    } else if (Array.isArray(value)) {
+      sanitized[key as keyof T] = value.map(item =>
+        (item !== null && typeof item === 'object') ? sanitizeObject(item) : item
+      ) as any;
+    } else {
+      sanitized[key as keyof T] = value;
+    }
+  }
 
   return sanitized;
+};
+
+/**
+ * Safe JSON parse with prototype pollution protection
+ */
+export const safeJSONParse = <T = any>(jsonString: string): T | null => {
+  try {
+    const parsed = JSON.parse(jsonString);
+    return sanitizeObject(parsed);
+  } catch (error) {
+    logger.error('JSON parse error', { error });
+    return null;
+  }
+};
+
+/**
+ * Validate that an object doesn't contain prototype pollution
+ */
+export const isObjectSafe = (obj: any): boolean => {
+  if (obj === null || typeof obj !== 'object') {
+    return true;
+  }
+
+  const dangerousKeys = ['__proto__', 'constructor', 'prototype'];
+
+  for (const key of Object.keys(obj)) {
+    if (dangerousKeys.includes(key)) {
+      return false;
+    }
+
+    // Recursively check nested objects
+    if (typeof obj[key] === 'object' && obj[key] !== null) {
+      if (!isObjectSafe(obj[key])) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 };

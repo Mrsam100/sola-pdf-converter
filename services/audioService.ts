@@ -128,11 +128,16 @@ let pipelineInstance: any = null;
 /**
  * Transcribes audio data using Whisper (tiny model via @huggingface/transformers).
  * Lazy-loads the model on first use; subsequent calls use the cached pipeline.
+ *
+ * 🔒 SECURITY FIX: Added timeout protection to prevent indefinite hanging
  */
 export async function transcribeWithWhisper(
     audioData: Float32Array,
     onProgress?: ProgressCallback
 ): Promise<string> {
+    const MODEL_LOAD_TIMEOUT = 180000; // 3 minutes for first-time model download
+    const TRANSCRIPTION_TIMEOUT = 120000; // 2 minutes for transcription
+
     onProgress?.(5, 'Loading AI model...');
 
     // Lazy-load the transformers library
@@ -141,25 +146,37 @@ export async function transcribeWithWhisper(
     if (!pipelineInstance) {
         onProgress?.(10, 'Downloading Whisper model (first time only)...');
 
-        pipelineInstance = await pipeline(
-            'automatic-speech-recognition',
-            'onnx-community/whisper-tiny.en',
-            {
-                dtype: 'q8',
-                device: 'wasm',
-            }
-        );
+        // Timeout wrapper for model loading (first time only)
+        pipelineInstance = await Promise.race([
+            pipeline(
+                'automatic-speech-recognition',
+                'onnx-community/whisper-tiny.en',
+                {
+                    dtype: 'q8',
+                    device: 'wasm',
+                }
+            ),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('Model download timed out. Please check your internet connection and try again.')), MODEL_LOAD_TIMEOUT)
+            )
+        ]);
 
         onProgress?.(50, 'Model loaded! Transcribing...');
     } else {
         onProgress?.(50, 'Transcribing audio...');
     }
 
-    const result = await pipelineInstance(audioData, {
-        chunk_length_s: 30,
-        stride_length_s: 5,
-        return_timestamps: false,
-    });
+    // Timeout wrapper for transcription
+    const result = await Promise.race([
+        pipelineInstance(audioData, {
+            chunk_length_s: 30,
+            stride_length_s: 5,
+            return_timestamps: false,
+        }),
+        new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Transcription timed out. The audio file may be too long or complex. Try splitting it into shorter segments.')), TRANSCRIPTION_TIMEOUT)
+        )
+    ]);
 
     onProgress?.(100, 'Transcription complete!');
 

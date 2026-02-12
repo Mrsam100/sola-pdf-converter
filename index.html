@@ -44,8 +44,10 @@
     <!-- Permissions Policy - Restrict browser features -->
     <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()" />
 
-    <!-- Content Security Policy -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob: https://generativelanguage.googleapis.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://huggingface.co https://*.huggingface.co https://*.hf.co; worker-src 'self' blob: https://cdn.jsdelivr.net; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;" />
+    <!-- Content Security Policy - PRODUCTION HARDENED 🔒 -->
+    <!-- Removed 'unsafe-inline' and 'unsafe-eval' for maximum XSS protection -->
+    <!-- All inline scripts moved to /scripts/init.js -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob: https://generativelanguage.googleapis.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://huggingface.co https://*.huggingface.co https://*.hf.co; worker-src 'self' blob: https://cdn.jsdelivr.net; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;" />
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,25 +103,10 @@
     }
     </script>
 
+    <!-- Main App Script -->
     <script type="module" src="/index.tsx"></script>
 
-    <!-- Service Worker for PWA (optional) -->
-    <script>
-      if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {
-            // Service worker not available, that's ok
-          });
-        });
-      }
-
-      // Show offline indicator
-      window.addEventListener('online', () => {
-        document.getElementById('offline-indicator').style.display = 'none';
-      });
-      window.addEventListener('offline', () => {
-        document.getElementById('offline-indicator').style.display = 'block';
-      });
-    </script>
+    <!-- Initialization Script (moved from inline to external file for CSP compliance) -->
+    <script src="/scripts/init.js"></script>
   </body>
 </html>

@@ -304,14 +304,16 @@ export const applyImageElements = async (
         const { height } = page.getSize();
 
         let embeddedImage;
-        if (imgEl.imageData.includes('image/png')) {
+        const mimeType = imgEl.imageData.split(',')[0].split(':')[1]?.split(';')[0] || '';
+
+        if (mimeType === 'image/png') {
             const imageBytes = base64ToArrayBuffer(imgEl.imageData.split(',')[1]);
             embeddedImage = await pdfDoc.embedPng(imageBytes);
-        } else if (imgEl.imageData.includes('image/jpeg') || imgEl.imageData.includes('image/jpg')) {
+        } else if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
             const imageBytes = base64ToArrayBuffer(imgEl.imageData.split(',')[1]);
             embeddedImage = await pdfDoc.embedJpg(imageBytes);
         } else {
-            throw new Error('Unsupported image format. Only PNG and JPEG images can be embedded in PDF.');
+            throw new Error(`Unsupported image format: ${mimeType}. Only PNG and JPEG images can be embedded in PDF.`);
         }
 
         page.drawImage(embeddedImage, {
@@ -462,11 +464,15 @@ export const saveEditedPDF = async (
     }
 
     // Then overlay new content — pass scale for coordinate conversion
-    await applyTextElements(pdfDoc, editorState.texts, scale);
-    await applyImageElements(pdfDoc, editorState.images, scale);
-    await applyShapeElements(pdfDoc, editorState.shapes, scale);
-    await applyAnnotationElements(pdfDoc, editorState.annotations, scale);
-    await applyDrawingPaths(pdfDoc, editorState.drawings, scale);
+    try {
+        await applyTextElements(pdfDoc, editorState.texts, scale);
+        await applyImageElements(pdfDoc, editorState.images, scale);
+        await applyShapeElements(pdfDoc, editorState.shapes, scale);
+        await applyAnnotationElements(pdfDoc, editorState.annotations, scale);
+        await applyDrawingPaths(pdfDoc, editorState.drawings, scale);
+    } catch (err) {
+        throw new Error(`Failed to apply edits to PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
 
     const pdfBytes = await pdfDoc.save();
     return pdfBytes;
@@ -474,7 +480,15 @@ export const saveEditedPDF = async (
 
 // Helper functions
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    // Remove # if present
+    const cleanHex = hex.replace(/^#/, '');
+
+    // Handle 3-digit shorthand (#fff → #ffffff)
+    const fullHex = cleanHex.length === 3
+        ? cleanHex.split('').map(char => char + char).join('')
+        : cleanHex;
+
+    const result = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(fullHex);
     return result ? {
         r: parseInt(result[1], 16) / 255,
         g: parseInt(result[2], 16) / 255,
@@ -483,10 +497,14 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 }
 
 function base64ToArrayBuffer(base64: string): Uint8Array {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+    try {
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes;
+    } catch (err) {
+        throw new Error(`Invalid base64 string: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-    return bytes;
 }

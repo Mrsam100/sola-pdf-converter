@@ -57,6 +57,11 @@ const PDFToPowerPoint: React.FC<PDFToPowerPointProps> = ({ tool, onBack }) => {
             setErrorMsg('Please select a valid PDF file.');
             return;
         }
+        // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
+            return;
+        }
         if (selectedFile.size > MAX_FILE_SIZE) {
             setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 50MB.`);
             return;

@@ -65,6 +65,34 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
     updateConfig({ pageOrder: reorderedPageOrder });
   };
 
+  /**
+   * 🔒 STATE CONSISTENCY FIX: Validate files before merge
+   *
+   * Problem: User could remove/change files after configuring, leading to state inconsistency
+   * Solution: Validate that all files in pageOrder still exist in files array
+   */
+  const handleMergeWithValidation = () => {
+    // Validate that all files in pageOrder still exist
+    const currentFileNames = new Set(files.map(f => f.name));
+    const missingFiles = config.pageOrder.filter(p => !currentFileNames.has(p.fileName));
+
+    if (missingFiles.length > 0) {
+      // State is inconsistent - files were removed
+      const fileList = missingFiles.map(f => f.fileName).join(', ');
+      alert(`❌ Error: Some files are no longer available: ${fileList}\n\nPlease go back and re-select your files.`);
+      return;
+    }
+
+    // Validate that we have at least 2 files
+    if (files.length < 2) {
+      alert('❌ Error: At least 2 PDF files are required to merge.');
+      return;
+    }
+
+    // All validations passed, proceed with merge
+    onMerge(config);
+  };
+
   // Track which file is currently highlighted during reorder
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
 
@@ -345,7 +373,7 @@ export const MergePdfConfig: React.FC<MergePdfConfigProps> = ({
 
         {/* Merge Button */}
         <button
-          onClick={() => onMerge(config)}
+          onClick={handleMergeWithValidation}
           style={{
             width: '100%',
             padding: '16px',

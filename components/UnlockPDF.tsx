@@ -24,7 +24,7 @@ const STEPS = [
     { label: 'Complete' },
 ];
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB (increased from 50MB)
 
 const UnlockPDF: React.FC<UnlockPDFProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
@@ -36,6 +36,11 @@ const UnlockPDF: React.FC<UnlockPDFProps> = ({ tool, onBack }) => {
     const [isEncrypted, setIsEncrypted] = useState<boolean | null>(null);
     const [isCheckingEncryption, setIsCheckingEncryption] = useState(false);
     const [resultBlob, setResultBlob] = useState<Uint8Array | null>(null);
+
+    // 🔒 BRUTE FORCE PROTECTION
+    const [failedAttempts, setFailedAttempts] = useState(0);
+    const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+    const [isLockedOut, setIsLockedOut] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
@@ -63,8 +68,13 @@ const UnlockPDF: React.FC<UnlockPDFProps> = ({ tool, onBack }) => {
             setErrorMsg('Please select a valid PDF file.');
             return;
         }
+        // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
+            return;
+        }
         if (selectedFile.size > MAX_FILE_SIZE) {
-            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 50MB.`);
+            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 150MB.`);
             return;
         }
 
@@ -123,12 +133,71 @@ const UnlockPDF: React.FC<UnlockPDFProps> = ({ tool, onBack }) => {
     }, [validateAndSetFile]);
 
     // ========================================
-    // Unlock Logic
+    // Brute Force Protection Logic
+    // ========================================
+
+    // Check lockout status
+    useEffect(() => {
+        if (lockoutUntil) {
+            const now = Date.now();
+            if (now >= lockoutUntil) {
+                setIsLockedOut(false);
+                setLockoutUntil(null);
+                setFailedAttempts(0);
+            } else {
+                setIsLockedOut(true);
+                const timer = setTimeout(() => {
+                    setIsLockedOut(false);
+                    setLockoutUntil(null);
+                    setFailedAttempts(0);
+                }, lockoutUntil - now);
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [lockoutUntil]);
+
+    // Calculate lockout duration based on failed attempts (exponential backoff)
+    const getLockoutDuration = (attempts: number): number => {
+        const durations = [
+            0,          // 0 attempts - no lockout
+            0,          // 1 attempt - no lockout
+            0,          // 2 attempts - no lockout
+            60000,      // 3 attempts - 1 minute
+            300000,     // 4 attempts - 5 minutes
+            900000,     // 5 attempts - 15 minutes
+            1800000,    // 6 attempts - 30 minutes
+            3600000,    // 7+ attempts - 60 minutes
+        ];
+        return attempts < durations.length ? durations[attempts] : durations[durations.length - 1];
+    };
+
+    // Format lockout time remaining
+    const getLockoutMessage = (): string => {
+        if (!lockoutUntil) return '';
+        const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+        if (remaining < 60) return `${remaining} seconds`;
+        const minutes = Math.ceil(remaining / 60);
+        if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''}`;
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return `${hours} hour${hours > 1 ? 's' : ''}${mins > 0 ? ` ${mins} min` : ''}`;
+    };
+
+    // ========================================
+    // Unlock Logic with Brute Force Protection
     // ========================================
 
     const handleUnlock = async () => {
         if (!file) { setErrorMsg('Please select a PDF file'); return; }
         if (!password || password.trim() === '') { setErrorMsg('Please enter the password'); return; }
+
+        // 🔒 BRUTE FORCE PROTECTION: Check if locked out
+        if (isLockedOut && lockoutUntil) {
+            const remainingTime = getLockoutMessage();
+            setErrorMsg(`⏱️ Too many failed attempts. Please wait ${remainingTime} before trying again.`);
+            toast.error(`Locked out for ${remainingTime}`);
+            return;
+        }
 
         setState(ProcessState.CONVERTING);
         setErrorMsg('');
@@ -137,6 +206,11 @@ const UnlockPDF: React.FC<UnlockPDFProps> = ({ tool, onBack }) => {
         try {
             const unlockedBytes = await unlockPDF(file, password);
             if (!mountedRef.current) return;
+
+            // ✅ SUCCESS: Reset brute force protection
+            setFailedAttempts(0);
+            setLockoutUntil(null);
+            setIsLockedOut(false);
 
             setResultBlob(unlockedBytes);
             setState(ProcessState.COMPLETED);
@@ -148,16 +222,39 @@ const UnlockPDF: React.FC<UnlockPDFProps> = ({ tool, onBack }) => {
             if (!mountedRef.current) return;
 
             let errorMessage = 'An unknown error occurred';
+            let isPasswordError = false;
+
             if (err instanceof Error) {
                 errorMessage = err.message;
-                if (err.message.includes('password') || err.message.includes('incorrect')) {
-                    errorMessage = 'Incorrect password. Please check and try again.';
+                if (err.message.includes('password') || err.message.includes('incorrect') || err.message.includes('Incorrect')) {
+                    isPasswordError = true;
+
+                    // 🔒 BRUTE FORCE PROTECTION: Increment failed attempts
+                    const newFailedAttempts = failedAttempts + 1;
+                    setFailedAttempts(newFailedAttempts);
+
+                    const lockoutDuration = getLockoutDuration(newFailedAttempts);
+
+                    if (lockoutDuration > 0) {
+                        const lockoutTime = Date.now() + lockoutDuration;
+                        setLockoutUntil(lockoutTime);
+                        setIsLockedOut(true);
+                        const timeMsg = getLockoutMessage();
+                        errorMessage = `❌ Incorrect password. Too many failed attempts (${newFailedAttempts}). Locked out for ${Math.ceil(lockoutDuration / 60000)} minutes.`;
+                        toast.error(`Locked out for ${timeMsg}`);
+                    } else {
+                        const attemptsRemaining = 3 - newFailedAttempts;
+                        errorMessage = `❌ Incorrect password. ${attemptsRemaining} attempt${attemptsRemaining !== 1 ? 's' : ''} remaining before lockout.`;
+                    }
                 } else if (err.message.includes('encrypted')) {
                     errorMessage = 'Failed to decrypt the PDF. The file may be corrupted.';
                 }
             }
+
             setErrorMsg(errorMessage);
-            toast.error('Failed to unlock PDF');
+            if (!isPasswordError) {
+                toast.error('Failed to unlock PDF');
+            }
             setState(ProcessState.IDLE);
         }
     };

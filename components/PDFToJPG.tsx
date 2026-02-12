@@ -26,6 +26,21 @@ const PDFToJPG: React.FC<PDFToJPGProps> = ({ tool, onBack }) => {
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const selectedFile = e.target.files[0];
+
+            // 🔒 SECURITY FIX: Validate file size to prevent browser crashes
+            const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB for PDFs
+
+            if (selectedFile.size > MAX_FILE_SIZE) {
+                const sizeMB = (selectedFile.size / 1024 / 1024).toFixed(1);
+                setErrorMsg(`❌ File too large (${sizeMB}MB). Maximum PDF size: 100MB. Please compress the PDF or split it into smaller files.`);
+                return;
+            }
+
+            if (selectedFile.size === 0) {
+                setErrorMsg('❌ File is empty. Please select a valid PDF file.');
+                return;
+            }
+
             setFile(selectedFile);
             setState(ProcessState.IDLE);
             setErrorMsg('');

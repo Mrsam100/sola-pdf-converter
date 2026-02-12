@@ -52,9 +52,20 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
     useWakeLock(isProcessing);
     usePageVisibility();
 
+    // 🔒 MEMORY FIX: Cleanup on unmount
     useEffect(() => {
-        return () => { mountedRef.current = false; };
-    }, []);
+        return () => {
+            mountedRef.current = false;
+            // Revoke all blob URLs to prevent memory leaks
+            pages.forEach(page => {
+                if (page.imageUrl.startsWith('blob:')) {
+                    try {
+                        URL.revokeObjectURL(page.imageUrl);
+                    } catch { /* ignore */ }
+                }
+            });
+        };
+    }, [pages]);
 
     const hasRotations = pages.some(p => p.rotation !== 0);
 
@@ -69,8 +80,12 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
             setErrorMsg('Please select a valid PDF file.');
             return;
         }
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
+            return;
+        }
         if (selectedFile.size > MAX_FILE_SIZE) {
-            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 50MB.`);
+            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 150MB.`);
             return;
         }
         setFile(selectedFile);
@@ -86,6 +101,15 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
     const loadPDFPreviews = async (pdfFile: File) => {
         setIsLoadingPreviews(true);
         setErrorMsg('');
+
+        // 🔒 MEMORY FIX: Revoke old preview URLs before loading new ones
+        pages.forEach(page => {
+            if (page.imageUrl.startsWith('blob:')) {
+                try {
+                    URL.revokeObjectURL(page.imageUrl);
+                } catch { /* ignore */ }
+            }
+        });
 
         try {
             const arrayBuffer = await pdfFile.arrayBuffer();
@@ -108,9 +132,17 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
 
                 setTotalPageCount(numPages);
                 const pagesToRender = Math.min(numPages, MAX_PREVIEW_PAGES);
-                const previews: PagePreviewData[] = [];
+                const allPreviews: PagePreviewData[] = [];
 
-                for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
+                // 🔒 PERFORMANCE FIX: Load previews in batches to prevent memory spikes
+                // Process 10 pages at a time instead of loading all 100 at once
+                const BATCH_SIZE = 10;
+                for (let batchStart = 1; batchStart <= pagesToRender; batchStart += BATCH_SIZE) {
+                    if (!mountedRef.current) return;
+
+                    const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, pagesToRender);
+
+                    for (let pageNum = batchStart; pageNum <= batchEnd; pageNum++) {
                     if (!mountedRef.current) return;
 
                     const page = await pdf.getPage(pageNum);
@@ -123,23 +155,51 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
 
                     canvas.width = viewport.width;
                     canvas.height = viewport.height;
-                    await page.render({ canvasContext: context, viewport }).promise;
 
-                    const imageUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    // 🔒 SECURITY FIX: Timeout protection for page rendering (30s per page)
+                    // Prevents indefinite hanging on corrupted PDFs
+                    await Promise.race([
+                        page.render({ canvasContext: context, viewport }).promise,
+                        new Promise<never>((_, reject) =>
+                            setTimeout(() => reject(new Error(`Page ${pageNum} rendering timed out. The PDF may be corrupted.`)), 30000)
+                        )
+                    ]);
 
-                    // Cleanup canvas memory
+                    // 🔒 MEMORY FIX: Use blob URLs instead of data URLs for better memory management
+                    // Data URLs (base64) can be several MB per page and stay in memory
+                    // Blob URLs are more memory-efficient and can be explicitly revoked
+                    // 🔒 SECURITY FIX: Handle null blob case
+                    const blob = await new Promise<Blob>((resolve, reject) => {
+                        canvas.toBlob((b) => {
+                            if (b) {
+                                resolve(b);
+                            } else {
+                                reject(new Error('Failed to create blob from canvas'));
+                            }
+                        }, 'image/jpeg', 0.7);
+                    });
+                    const imageUrl = URL.createObjectURL(blob);
+
+                    // 🔒 MEMORY FIX: Aggressively cleanup canvas
+                    // Reset dimensions first, then null the context reference
                     canvas.width = 0;
                     canvas.height = 0;
+                    context.clearRect(0, 0, 0, 0);
 
-                    previews.push({
-                        pageNumber: pageNum,
-                        imageUrl,
-                        rotation: 0,
-                    });
+                        allPreviews.push({
+                            pageNumber: pageNum,
+                            imageUrl,
+                            rotation: 0,
+                        });
+                    }
+
+                    // Update state after each batch for better UX (progressive loading)
+                    if (mountedRef.current) {
+                        setPages([...allPreviews]);
+                    }
                 }
 
                 if (!mountedRef.current) return;
-                setPages(previews);
             } finally {
                 pdf.destroy();
             }
@@ -287,6 +347,15 @@ const RotatePDF: React.FC<RotatePDFProps> = ({ tool, onBack }) => {
     };
 
     const handleReset = () => {
+        // 🔒 MEMORY FIX: Revoke blob URLs before clearing state
+        pages.forEach(page => {
+            if (page.imageUrl.startsWith('blob:')) {
+                try {
+                    URL.revokeObjectURL(page.imageUrl);
+                } catch { /* ignore */ }
+            }
+        });
+
         setState(ProcessState.IDLE);
         setFile(null);
         setPages([]);

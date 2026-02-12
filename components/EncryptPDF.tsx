@@ -27,7 +27,7 @@ type PasswordStrength = 'none' | 'weak' | 'medium' | 'strong';
 
 function getPasswordStrength(password: string): PasswordStrength {
     if (!password) return 'none';
-    if (password.length < 6) return 'weak';
+    if (password.length < 8) return 'weak'; // Minimum 8 characters
 
     const hasUpper = /[A-Z]/.test(password);
     const hasLower = /[a-z]/.test(password);
@@ -35,8 +35,8 @@ function getPasswordStrength(password: string): PasswordStrength {
     const hasSymbol = /[^A-Za-z0-9]/.test(password);
     const variety = [hasUpper, hasLower, hasNumber, hasSymbol].filter(Boolean).length;
 
-    if (password.length >= 10 && variety >= 3) return 'strong';
-    if (password.length >= 6 && variety >= 2) return 'medium';
+    if (password.length >= 12 && variety >= 3) return 'strong';
+    if (password.length >= 8 && variety >= 2) return 'medium';
     return 'weak';
 }
 
@@ -79,7 +79,8 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
     const strength = getPasswordStrength(password);
     const strengthInfo = STRENGTH_CONFIG[strength];
     const passwordsMatch = password === confirmPassword;
-    const canEncrypt = file && password.length >= 4 && passwordsMatch;
+    // 🔒 SECURITY: Require minimum 8 characters (industry standard)
+    const canEncrypt = file && password.length >= 8 && passwordsMatch;
 
     // ========================================
     // File Handling
@@ -92,9 +93,15 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
             return;
         }
 
-        const maxSize = 50 * 1024 * 1024;
+        // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
+            return;
+        }
+
+        const maxSize = 150 * 1024 * 1024; // Increased from 50MB
         if (selectedFile.size > maxSize) {
-            setErrorMsg('File is too large. Maximum size is 50MB.');
+            setErrorMsg('File is too large. Maximum size is 150MB.');
             return;
         }
 
@@ -450,9 +457,12 @@ const EncryptPDF: React.FC<EncryptPDFProps> = ({ tool, onBack }) => {
                                     marginBottom: '1.5rem',
                                 }}>
                                     <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
-                                        <strong>About encryption:</strong> Your PDF will be protected with AES encryption.
+                                        <strong>About encryption:</strong> Your PDF will be protected with standard PDF encryption (128-bit RC4/AES).
                                         The password cannot be recovered — store it securely.
                                         All processing happens locally in your browser.
+                                        <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.85 }}>
+                                            <strong>⚠️ Security Note:</strong> For maximum security, use a strong password (12+ characters with mixed case, numbers, and symbols). PDF standard encryption is suitable for general use but may not meet requirements for highly sensitive documents.
+                                        </div>
                                     </div>
                                 </div>
 

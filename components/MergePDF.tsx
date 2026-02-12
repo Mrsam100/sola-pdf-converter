@@ -25,8 +25,8 @@ const STEPS = [
     { label: 'Complete' },
 ];
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB per file
-const MAX_FILE_COUNT = 50;
+const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB per file (increased from 50MB)
+const MAX_FILE_COUNT = 100; // Increased from 50
 
 const MergePDF: React.FC<MergePDFProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
@@ -64,8 +64,11 @@ const MergePDF: React.FC<MergePDFProps> = ({ tool, onBack }) => {
         if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
             return `"${file.name}" is not a PDF file.`;
         }
+        if (file.size === 0) {
+            return `"${file.name}" is empty (0 bytes). Please select a valid PDF file.`;
+        }
         if (file.size > MAX_FILE_SIZE) {
-            return `"${file.name}" is too large (${formatFileSize(file.size)}). Maximum is 50MB per file.`;
+            return `"${file.name}" is too large (${formatFileSize(file.size)}). Maximum is 150MB per file.`;
         }
         return null;
     }, []);
@@ -183,6 +186,38 @@ const MergePDF: React.FC<MergePDFProps> = ({ tool, onBack }) => {
                     if (e instanceof Error && e.message.includes('does not appear')) throw e;
                     throw new Error(`Failed to read "${file.name}". Please try selecting it again.`);
                 }
+            }
+
+            // 🔒 SECURITY FIX: Validate total page count to prevent browser crashes
+            const MAX_TOTAL_PAGES = 10000; // Prevent merging too many pages (increased from 2000)
+            const { pdfjsLib } = await import('../services/pdfConfig');
+            let totalPages = 0;
+
+            for (const file of files) {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+
+                    // 🔒 SECURITY FIX: Timeout protection for page counting (30s per PDF)
+                    // Prevents indefinite hanging on corrupted PDFs
+                    const pdf = await Promise.race([
+                        pdfjsLib.getDocument({ data: arrayBuffer }).promise,
+                        new Promise<never>((_, reject) =>
+                            setTimeout(() => reject(new Error(`Timeout while loading "${file.name}". The PDF may be corrupted.`)), 30000)
+                        )
+                    ]);
+
+                    totalPages += pdf.numPages;
+                    pdf.destroy(); // Clean up
+                } catch (e) {
+                    if (e instanceof Error && e.message.includes('Timeout')) {
+                        throw e;
+                    }
+                    throw new Error(`Failed to count pages in "${file.name}". The file may be corrupted.`);
+                }
+            }
+
+            if (totalPages > MAX_TOTAL_PAGES) {
+                throw new Error(`❌ Total page count (${totalPages}) exceeds maximum (${MAX_TOTAL_PAGES}). Please merge fewer pages or split into multiple batches.\n\n💡 Tip: Try merging PDFs in smaller groups.`);
             }
 
             const mergedPdf = await mergePDFs(files, finalConfig, (prog, status) => {

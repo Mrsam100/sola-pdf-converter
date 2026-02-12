@@ -461,8 +461,23 @@ export const downloadPDF = (pdfBytes: Uint8Array, filename: string): void => {
     link.click();
     document.body.removeChild(link);
 
-    // Clean up the URL object after download starts
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    // 🔒 MEMORY FIX: Revoke immediately after click + fallback
+    // The browser has already captured the blob URL, safe to revoke immediately
+    // Add fallback in case immediate revocation fails
+    queueMicrotask(() => {
+        try {
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            // Fallback: Try again after a short delay
+            setTimeout(() => {
+                try {
+                    URL.revokeObjectURL(url);
+                } catch {
+                    console.warn('[downloadPDF] Failed to revoke object URL');
+                }
+            }, 100);
+        }
+    });
 };
 
 /**
@@ -620,7 +635,21 @@ export const downloadImage = (blob: Blob, filename: string): void => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+    // 🔒 MEMORY FIX: Revoke immediately after click + fallback
+    queueMicrotask(() => {
+        try {
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            setTimeout(() => {
+                try {
+                    URL.revokeObjectURL(url);
+                } catch {
+                    console.warn('[downloadImage] Failed to revoke object URL');
+                }
+            }, 100);
+        }
+    });
 };
 
 /**

@@ -11,6 +11,107 @@ import { createConfiguredWorker } from './tesseractConfig';
 /** Maximum pages for OCR — prevents multi-hour freezes on large docs */
 const MAX_OCR_PAGES = 200;
 
+// ── Unicode Detection & Warnings ──────────────────
+
+/**
+ * 🔒 SECURITY FIX: Detect Unicode characters that may be lost during conversion
+ *
+ * Detects CJK (Chinese, Japanese, Korean), Arabic, Hebrew, Cyrillic, and other
+ * complex scripts that may not convert properly to Word format.
+ */
+const detectUnicodeCharacters = (text: string): {
+    hasCJK: boolean;
+    hasArabic: boolean;
+    hasHebrew: boolean;
+    hasCyrillic: boolean;
+    hasComplexUnicode: boolean;
+    stats: { cjk: number; arabic: number; hebrew: number; cyrillic: number; other: number };
+} => {
+    let cjkCount = 0;
+    let arabicCount = 0;
+    let hebrewCount = 0;
+    let cyrillicCount = 0;
+    let otherComplexCount = 0;
+
+    for (const char of text) {
+        const code = char.charCodeAt(0);
+
+        // CJK Unified Ideographs
+        if ((code >= 0x4E00 && code <= 0x9FFF) || // CJK Unified Ideographs
+            (code >= 0x3400 && code <= 0x4DBF) || // CJK Extension A
+            (code >= 0x20000 && code <= 0x2A6DF) || // CJK Extension B
+            (code >= 0x3040 && code <= 0x309F) || // Hiragana
+            (code >= 0x30A0 && code <= 0x30FF) || // Katakana
+            (code >= 0xAC00 && code <= 0xD7AF)) { // Hangul
+            cjkCount++;
+        }
+        // Arabic
+        else if (code >= 0x0600 && code <= 0x06FF) {
+            arabicCount++;
+        }
+        // Hebrew
+        else if (code >= 0x0590 && code <= 0x05FF) {
+            hebrewCount++;
+        }
+        // Cyrillic
+        else if (code >= 0x0400 && code <= 0x04FF) {
+            cyrillicCount++;
+        }
+        // Other complex Unicode (Thai, Devanagari, etc.)
+        else if (code > 0x0250) {
+            otherComplexCount++;
+        }
+    }
+
+    return {
+        hasCJK: cjkCount > 0,
+        hasArabic: arabicCount > 0,
+        hasHebrew: hebrewCount > 0,
+        hasCyrillic: cyrillicCount > 0,
+        hasComplexUnicode: (cjkCount + arabicCount + hebrewCount + cyrillicCount + otherComplexCount) > 0,
+        stats: { cjk: cjkCount, arabic: arabicCount, hebrew: hebrewCount, cyrillic: cyrillicCount, other: otherComplexCount }
+    };
+};
+
+/**
+ * Generate user-friendly warning message for Unicode data loss
+ */
+export const getUnicodeWarning = (text: string): string | null => {
+    const detection = detectUnicodeCharacters(text);
+
+    if (!detection.hasComplexUnicode) {
+        return null;
+    }
+
+    const warnings: string[] = [];
+    if (detection.hasCJK) {
+        warnings.push(`⚠️ Chinese/Japanese/Korean characters detected (${detection.stats.cjk})`);
+    }
+    if (detection.hasArabic) {
+        warnings.push(`⚠️ Arabic characters detected (${detection.stats.arabic})`);
+    }
+    if (detection.hasHebrew) {
+        warnings.push(`⚠️ Hebrew characters detected (${detection.stats.hebrew})`);
+    }
+    if (detection.hasCyrillic) {
+        warnings.push(`⚠️ Cyrillic characters detected (${detection.stats.cyrillic})`);
+    }
+    if (detection.stats.other > 0) {
+        warnings.push(`⚠️ Other complex Unicode detected (${detection.stats.other})`);
+    }
+
+    return `
+⚠️ **DATA LOSS WARNING**: This document contains non-Latin characters that may not convert properly to Word format.
+
+${warnings.join('\n')}
+
+**Recommendation**:
+- Use "Save as PDF" instead if preserving original formatting is critical
+- Review the converted document carefully for missing or corrupted characters
+- Consider using a specialized conversion tool for documents with complex scripts
+`.trim();
+};
+
 // ── Types ─────────────────────────────────────────
 
 interface PageData {

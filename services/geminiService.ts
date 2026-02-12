@@ -5,10 +5,84 @@
 
 import { GoogleGenAI } from "@google/genai";
 
+/**
+ * ⚠️ SECURITY WARNING ⚠️
+ * This service uses client-side API calls which exposes the API key in the browser.
+ *
+ * CRITICAL SECURITY ISSUES:
+ * 1. API key is visible in browser DevTools (Network tab, Sources tab)
+ * 2. Malicious users can extract the key and abuse your quota
+ * 3. No rate limiting on client side - can exhaust API quota
+ *
+ * PRODUCTION RECOMMENDATION:
+ * Move all Gemini API calls to a backend server:
+ * - Client → Your Backend API → Gemini API
+ * - Implement rate limiting on your backend (3 req/min per user)
+ * - Add request logging and monitoring
+ * - Protect API key server-side only
+ */
+
+// Validate API key format (Google AI API keys start with "AIza")
+const validateApiKey = (key: string): boolean => {
+    return key.startsWith('AIza') && key.length >= 39;
+};
+
+// Rate limiter for client-side protection (weak protection - use backend for production)
+const rateLimiter = {
+    requests: [] as number[],
+    maxRequests: 10, // Max 10 requests per minute
+    windowMs: 60000, // 1 minute window
+
+    isAllowed(): boolean {
+        const now = Date.now();
+        // Remove old requests outside window
+        this.requests = this.requests.filter(time => now - time < this.windowMs);
+
+        if (this.requests.length >= this.maxRequests) {
+            return false;
+        }
+
+        this.requests.push(now);
+        return true;
+    },
+
+    getWaitTime(): number {
+        if (this.requests.length === 0) return 0;
+        const oldestRequest = this.requests[0];
+        return Math.max(0, this.windowMs - (Date.now() - oldestRequest));
+    }
+};
+
 export const convertFile = async (file: File, toolId: string): Promise<string> => {
     const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+
+    // Validate API key exists
     if (!apiKey) {
-        throw new Error("API Key missing. Please add GEMINI_API_KEY to your .env file.");
+        throw new Error("❌ API Key missing. Please add GEMINI_API_KEY to your .env file.\n\nGet your key from: https://aistudio.google.com/apikey");
+    }
+
+    // Validate API key format
+    if (!validateApiKey(apiKey)) {
+        throw new Error("❌ Invalid API key format. Google AI API keys start with 'AIza' and are 39+ characters long.\n\nCheck your .env file and get a valid key from: https://aistudio.google.com/apikey");
+    }
+
+    // Client-side rate limiting (weak protection)
+    if (!rateLimiter.isAllowed()) {
+        const waitSeconds = Math.ceil(rateLimiter.getWaitTime() / 1000);
+        throw new Error(`⏱️ Rate limit exceeded. Please wait ${waitSeconds} seconds before trying again.\n\n💡 Tip: Upgrade to a backend API for unlimited requests.`);
+    }
+
+    // Validate file size (max 50MB for Gemini API - increased limit)
+    const maxSize = 50 * 1024 * 1024; // 50MB (increased from 20MB)
+    if (file.size > maxSize) {
+        throw new Error(`❌ File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size: 50MB.\n\n💡 Tip: Compress the file or split it into smaller chunks.`);
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/', 'audio/', 'video/', 'application/pdf', 'text/'];
+    const isAllowedType = allowedTypes.some(type => file.type.startsWith(type));
+    if (!isAllowedType) {
+        throw new Error(`❌ Unsupported file type: ${file.type}\n\nAllowed types: Images, Audio, Video, PDF, Text files`);
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -69,9 +143,33 @@ export const convertFile = async (file: File, toolId: string): Promise<string> =
 
 export const sendMessageToGemini = async (history: { role: 'user' | 'model'; text: string }[], message: string): Promise<string> => {
     const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+
+    // Validate API key exists
     if (!apiKey) {
-        throw new Error("API Key missing. Please add GEMINI_API_KEY to your .env file.");
+        throw new Error("❌ API Key missing. Please add GEMINI_API_KEY to your .env file.\n\nGet your key from: https://aistudio.google.com/apikey");
     }
+
+    // Validate API key format
+    if (!validateApiKey(apiKey)) {
+        throw new Error("❌ Invalid API key format. Google AI API keys start with 'AIza' and are 39+ characters long.");
+    }
+
+    // Client-side rate limiting
+    if (!rateLimiter.isAllowed()) {
+        const waitSeconds = Math.ceil(rateLimiter.getWaitTime() / 1000);
+        throw new Error(`⏱️ Rate limit exceeded. Please wait ${waitSeconds} seconds before trying again.`);
+    }
+
+    // Validate message length (max 30,000 characters)
+    if (message.length > 30000) {
+        throw new Error(`❌ Message too long (${message.length} characters). Maximum: 30,000 characters.`);
+    }
+
+    // Sanitize message to prevent injection attacks
+    const sanitizedMessage = message
+        .replace(/<script[^>]*>.*?<\/script>/gi, '')
+        .replace(/javascript:/gi, '')
+        .trim();
 
     const ai = new GoogleGenAI({ apiKey });
 
@@ -89,7 +187,7 @@ export const sendMessageToGemini = async (history: { role: 'user' | 'model'; tex
         }
     });
 
-    const result = await chat.sendMessage({ message });
+    const result = await chat.sendMessage({ message: sanitizedMessage });
     return result.text || "";
 };
 

@@ -26,6 +26,47 @@ interface WordItem {
     lineBreak?: boolean;
 }
 
+// ── Unicode Detection & Warnings ──────────────────
+
+/**
+ * 🔒 SECURITY FIX: Detect Unicode characters that may be lost during conversion
+ */
+const detectUnicodeIssues = (text: string): {
+    hasCJK: boolean;
+    hasComplexUnicode: boolean;
+    warningMessage: string | null;
+} => {
+    let cjkCount = 0;
+    let complexCount = 0;
+
+    for (const char of text) {
+        const code = char.charCodeAt(0);
+        if ((code >= 0x4E00 && code <= 0x9FFF) || // CJK
+            (code >= 0x3040 && code <= 0x30FF) || // Hiragana/Katakana
+            (code >= 0xAC00 && code <= 0xD7AF)) { // Hangul
+            cjkCount++;
+        } else if (code > 0x0250) {
+            complexCount++;
+        }
+    }
+
+    const hasIssues = cjkCount > 0 || complexCount > 10;
+
+    return {
+        hasCJK: cjkCount > 0,
+        hasComplexUnicode: hasIssues,
+        warningMessage: hasIssues ? `⚠️ Document contains ${cjkCount} CJK characters and ${complexCount} other complex Unicode characters. Some characters may not render correctly in PDF. Consider using a font that supports these characters.` : null
+    };
+};
+
+/**
+ * Export for components to check before conversion
+ */
+export const checkUnicodeSupport = (text: string): string | null => {
+    const result = detectUnicodeIssues(text);
+    return result.warningMessage;
+};
+
 // ── HTML Parsing ───────────────────────────────────
 
 function parseHTMLToBlocks(html: string): ContentBlock[] {

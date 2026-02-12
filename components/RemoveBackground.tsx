@@ -15,6 +15,7 @@ import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
 import { toast } from '../hooks/useToast';
 import BackButton from './BackButton';
 import StepProgress from './StepProgress';
+import { validateImage } from '../utils/magicByteValidator';
 
 interface RemoveBackgroundProps {
     tool: Tool;
@@ -27,7 +28,7 @@ const STEPS = [
     { label: 'Complete' },
 ];
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB (increased from 10MB)
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic', 'image/heif', 'image/bmp', 'image/tiff'];
 
 /** Sanitize filename: strip path traversal, control chars, limit length */
@@ -90,7 +91,7 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
         state === ProcessState.CONVERTING ? 1 :
         state === ProcessState.COMPLETED ? 2 : 0;
 
-    const validateAndSetFile = useCallback((selectedFile: File) => {
+    const validateAndSetFile = useCallback(async (selectedFile: File) => {
         if (!selectedFile.type || !ALLOWED_TYPES.includes(selectedFile.type)) {
             setErrorMsg('Please select a valid image file (PNG, JPG, WebP, HEIC, BMP, or TIFF).');
             return;
@@ -102,7 +103,62 @@ const RemoveBackground: React.FC<RemoveBackgroundProps> = ({ tool, onBack }) => 
         }
 
         if (selectedFile.size > MAX_FILE_SIZE) {
-            setErrorMsg(`Image is too large (${formatFileSize(selectedFile.size)}). Maximum size is 10MB.`);
+            setErrorMsg(`Image is too large (${formatFileSize(selectedFile.size)}). Maximum size is 25MB.`);
+            return;
+        }
+
+        // 🔒 SECURITY FIX: Validate file using magic bytes to prevent MIME type spoofing
+        const magicByteResult = await validateImage(selectedFile);
+        if (!magicByteResult.valid) {
+            setErrorMsg(magicByteResult.error || 'Invalid image file. The file may be corrupted or in an unsupported format.');
+            return;
+        }
+        if (magicByteResult.warning) {
+            toast.info(magicByteResult.warning);
+        }
+
+        // 🔒 SECURITY FIX: Validate image dimensions to prevent extreme aspect ratios
+        // Prevents attacks using 1px × 10,000,000px images that crash the browser
+        try {
+            const img = new Image();
+            const dimensionCheck = await new Promise<{ width: number; height: number; valid: boolean; error?: string }>((resolve) => {
+                img.onload = () => {
+                    const MAX_DIMENSION = 10000; // Max 10,000px on any side
+                    const MAX_PIXELS = 100_000_000; // Max 100 megapixels total
+                    const totalPixels = img.width * img.height;
+
+                    if (img.width > MAX_DIMENSION || img.height > MAX_DIMENSION) {
+                        resolve({
+                            width: img.width,
+                            height: img.height,
+                            valid: false,
+                            error: `Image dimensions too large (${img.width}×${img.height}px). Maximum is ${MAX_DIMENSION}px on any side.`
+                        });
+                    } else if (totalPixels > MAX_PIXELS) {
+                        resolve({
+                            width: img.width,
+                            height: img.height,
+                            valid: false,
+                            error: `Image has too many pixels (${(totalPixels / 1_000_000).toFixed(1)}MP). Maximum is ${MAX_PIXELS / 1_000_000}MP.`
+                        });
+                    } else {
+                        resolve({ width: img.width, height: img.height, valid: true });
+                    }
+                    URL.revokeObjectURL(img.src);
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(img.src);
+                    resolve({ width: 0, height: 0, valid: false, error: 'Failed to load image for dimension check.' });
+                };
+                img.src = URL.createObjectURL(selectedFile);
+            });
+
+            if (!dimensionCheck.valid) {
+                setErrorMsg(dimensionCheck.error || 'Invalid image dimensions.');
+                return;
+            }
+        } catch (err) {
+            setErrorMsg('Failed to validate image dimensions. The file may be corrupted.');
             return;
         }
 

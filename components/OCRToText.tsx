@@ -12,6 +12,7 @@ import { toast } from '../hooks/useToast';
 import { formatFileSize } from '../utils/formatFileSize';
 import BackButton from './BackButton';
 import StepProgress from './StepProgress';
+import { validateImage, validatePDF } from '../utils/magicByteValidator';
 
 interface OCRToTextProps {
     tool: Tool;
@@ -42,7 +43,7 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
         ? (file ? 0 : -1)
         : state === ProcessState.CONVERTING ? 1 : 2;
 
-    const validateAndSetFile = useCallback((selectedFile: File) => {
+    const validateAndSetFile = useCallback(async (selectedFile: File) => {
         const isPDF = selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
         const isImage = selectedFile.type.startsWith('image/');
 
@@ -51,10 +52,102 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
             return;
         }
 
-        const maxSize = 50 * 1024 * 1024;
-        if (selectedFile.size > maxSize) {
-            setErrorMsg('File is too large. Maximum size is 50MB');
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid file.');
             return;
+        }
+
+        const maxSize = 100 * 1024 * 1024; // Increased from 50MB for OCR
+        if (selectedFile.size > maxSize) {
+            setErrorMsg('File is too large. Maximum size is 100MB');
+            return;
+        }
+
+        // 🔒 SECURITY FIX: Validate file using magic bytes to prevent MIME type spoofing
+        const magicByteResult = isPDF
+            ? await validatePDF(selectedFile)
+            : await validateImage(selectedFile);
+
+        if (!magicByteResult.valid) {
+            setErrorMsg(magicByteResult.error || 'Invalid file. The file may be corrupted or in an unsupported format.');
+            return;
+        }
+        if (magicByteResult.warning) {
+            toast.info(magicByteResult.warning);
+        }
+
+        // 🔒 SECURITY FIX: Validate image dimensions if it's an image file
+        if (isImage) {
+            try {
+                const img = new Image();
+                const dimensionCheck = await new Promise<{ valid: boolean; error?: string }>((resolve) => {
+                    img.onload = () => {
+                        const MAX_DIMENSION = 10000;
+                        const MAX_PIXELS = 100_000_000;
+                        const totalPixels = img.width * img.height;
+
+                        if (img.width > MAX_DIMENSION || img.height > MAX_DIMENSION) {
+                            resolve({
+                                valid: false,
+                                error: `Image dimensions too large (${img.width}×${img.height}px). Maximum is ${MAX_DIMENSION}px on any side.`
+                            });
+                        } else if (totalPixels > MAX_PIXELS) {
+                            resolve({
+                                valid: false,
+                                error: `Image has too many pixels (${(totalPixels / 1_000_000).toFixed(1)}MP). Maximum is ${MAX_PIXELS / 1_000_000}MP.`
+                            });
+                        } else {
+                            resolve({ valid: true });
+                        }
+                        URL.revokeObjectURL(img.src);
+                    };
+                    img.onerror = () => {
+                        URL.revokeObjectURL(img.src);
+                        resolve({ valid: false, error: 'Failed to load image for dimension check.' });
+                    };
+                    img.src = URL.createObjectURL(selectedFile);
+                });
+
+                if (!dimensionCheck.valid) {
+                    setErrorMsg(dimensionCheck.error || 'Invalid image dimensions.');
+                    return;
+                }
+            } catch (err) {
+                setErrorMsg('Failed to validate image dimensions. The file may be corrupted.');
+                return;
+            }
+        }
+
+        // 🔒 SECURITY FIX: Check if PDF is password-protected
+        if (isPDF) {
+            try {
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                const { pdfjsLib } = await import('../services/pdfConfig');
+
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                const pdf = await Promise.race([
+                    loadingTask.promise,
+                    new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error('Timeout loading PDF')), 10000)
+                    )
+                ]);
+
+                // Check if password is required
+                if ((loadingTask as any).password) {
+                    setErrorMsg('❌ This PDF is password-protected. Please unlock it first using the Unlock PDF tool before performing OCR.');
+                    return;
+                }
+
+                pdf.destroy(); // Clean up
+            } catch (err) {
+                if (err instanceof Error) {
+                    if (err.message.includes('password') || err.message.includes('encrypted')) {
+                        setErrorMsg('❌ This PDF is password-protected. Please unlock it first using the Unlock PDF tool.');
+                        return;
+                    }
+                    // Other errors are fine - we'll catch them during actual OCR processing
+                }
+            }
         }
 
         setFile(selectedFile);
@@ -93,14 +186,34 @@ const OCRToText: React.FC<OCRToTextProps> = ({ tool, onBack }) => {
         }
     }, [validateAndSetFile]);
 
+    /**
+     * 🔒 SECURITY FIX: OCR with timeout protection
+     * Prevents indefinite hanging on corrupted files or network issues
+     */
     const ocrImage = async (imageFile: File, onProgress?: (p: number, s: string) => void): Promise<string> => {
         let worker: any = null;
+        const TIMEOUT_MS = 120000; // 2 minutes max for OCR
+
         try {
             onProgress?.(5, 'Initializing OCR engine...');
-            worker = await createConfiguredWorker('eng');
+
+            // Timeout wrapper for worker creation
+            worker = await Promise.race([
+                createConfiguredWorker('eng'),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('OCR initialization timed out. Please check your internet connection and try again.')), 30000)
+                )
+            ]);
 
             onProgress?.(20, 'Recognizing text...');
-            const { data: { text } } = await worker.recognize(imageFile);
+
+            // Timeout wrapper for recognition
+            const { data: { text } } = await Promise.race([
+                worker.recognize(imageFile),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('OCR processing timed out. The file may be too large or complex. Try splitting it into smaller images.')), TIMEOUT_MS)
+                )
+            ]);
 
             onProgress?.(100, 'OCR complete!');
             return text.trim();

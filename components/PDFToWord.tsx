@@ -61,9 +61,15 @@ const PDFToWord: React.FC<PDFToWordProps> = ({ tool, onBack }) => {
             return;
         }
 
-        const maxSize = 50 * 1024 * 1024;
+        // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
+            return;
+        }
+
+        const maxSize = 150 * 1024 * 1024; // Increased from 50MB
         if (selectedFile.size > maxSize) {
-            setErrorMsg('File is too large. Maximum size is 50MB');
+            setErrorMsg('File is too large. Maximum size is 150MB');
             return;
         }
 

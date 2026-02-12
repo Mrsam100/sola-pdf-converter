@@ -7,6 +7,7 @@ import React, { useState, useRef } from 'react';
 import { Tool, ProcessState, ImageToPdfConfig, ConversionStep } from '../types';
 import { imagesToPDF, downloadPDF } from '../services/pdfService';
 import { ImageToPdfConfig as ImageToPdfConfigComponent } from './config/ImageToPdfConfig';
+import { validateImage } from '../utils/magicByteValidator';
 
 interface ImageToPDFProps {
     tool: Tool;
@@ -22,9 +23,101 @@ const ImageToPDF: React.FC<ImageToPDFProps> = ({ tool, onBack }) => {
     const [resultSize, setResultSize] = useState<number>(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            const selectedFiles = Array.from(e.target.files);
+            let selectedFiles = Array.from(e.target.files);
+
+            // 🔒 SECURITY FIX: Validate file size and count limits (INCREASED LIMITS)
+            const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB per image (increased from 10MB)
+            const MAX_FILE_COUNT = 300; // Max 300 images (increased from 100)
+
+            // Check for 0-byte files
+            const emptyFiles = selectedFiles.filter(f => f.size === 0);
+            if (emptyFiles.length > 0) {
+                setErrorMsg(`❌ ${emptyFiles.length} file(s) are empty (0 bytes) and were skipped.`);
+                const validFiles = selectedFiles.filter(f => f.size > 0);
+                if (validFiles.length === 0) return;
+                // Continue with valid files
+                selectedFiles = validFiles;
+            }
+
+            // 🔒 SECURITY FIX: Validate images using magic bytes to prevent malicious files
+            const magicByteValidations = await Promise.all(
+                selectedFiles.map(async (file) => ({
+                    file,
+                    result: await validateImage(file)
+                }))
+            );
+
+            const invalidFiles = magicByteValidations.filter(v => !v.result.valid);
+            if (invalidFiles.length > 0) {
+                setErrorMsg(`❌ ${invalidFiles.length} file(s) are not valid images and were skipped.`);
+                selectedFiles = magicByteValidations
+                    .filter(v => v.result.valid)
+                    .map(v => v.file);
+                if (selectedFiles.length === 0) return;
+            }
+
+            // 🔒 SECURITY FIX: Validate image dimensions to prevent extreme aspect ratios
+            const dimensionValidations = await Promise.all(
+                selectedFiles.map(async (file) => {
+                    try {
+                        const img = new Image();
+                        const check = await new Promise<{ valid: boolean }>((resolve) => {
+                            img.onload = () => {
+                                const MAX_DIMENSION = 10000;
+                                const MAX_PIXELS = 100_000_000;
+                                const valid = img.width <= MAX_DIMENSION &&
+                                              img.height <= MAX_DIMENSION &&
+                                              (img.width * img.height) <= MAX_PIXELS;
+                                URL.revokeObjectURL(img.src);
+                                resolve({ valid });
+                            };
+                            img.onerror = () => {
+                                URL.revokeObjectURL(img.src);
+                                resolve({ valid: false });
+                            };
+                            img.src = URL.createObjectURL(file);
+                        });
+                        return { file, valid: check.valid };
+                    } catch {
+                        return { file, valid: false };
+                    }
+                })
+            );
+
+            const oversizedDimensions = dimensionValidations.filter(v => !v.valid);
+            if (oversizedDimensions.length > 0) {
+                setErrorMsg(`⚠️ ${oversizedDimensions.length} file(s) have invalid dimensions and were skipped (max 10,000px per side, 100MP total).`);
+                selectedFiles = dimensionValidations
+                    .filter(v => v.valid)
+                    .map(v => v.file);
+                if (selectedFiles.length === 0) return;
+            }
+
+            // Check file sizes
+            const oversizedFiles = selectedFiles.filter(f => f.size > MAX_FILE_SIZE);
+            if (oversizedFiles.length > 0) {
+                setErrorMsg(`⚠️ ${oversizedFiles.length} file(s) exceed 25MB limit and were skipped. Maximum file size: 25MB per image.`);
+                const validFiles = selectedFiles.filter(f => f.size <= MAX_FILE_SIZE);
+                if (validFiles.length === 0) return;
+                selectedFiles = validFiles;
+            }
+
+            // Check total file count
+            const newTotalCount = files.length + selectedFiles.length;
+            if (newTotalCount > MAX_FILE_COUNT) {
+                const allowedCount = MAX_FILE_COUNT - files.length;
+                if (allowedCount <= 0) {
+                    setErrorMsg(`❌ Maximum ${MAX_FILE_COUNT} images allowed. Please remove some images before adding more.`);
+                    return;
+                }
+                setErrorMsg(`⚠️ Only ${allowedCount} of ${selectedFiles.length} files added (max ${MAX_FILE_COUNT} total).`);
+                setFiles(prevFiles => [...prevFiles, ...selectedFiles.slice(0, allowedCount)]);
+                setState(ProcessState.IDLE);
+                return;
+            }
+
             setFiles(prevFiles => [...prevFiles, ...selectedFiles]);
             setState(ProcessState.IDLE);
             setErrorMsg('');

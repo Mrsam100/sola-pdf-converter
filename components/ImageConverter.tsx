@@ -28,7 +28,7 @@ const STEPS = [
     { label: 'Complete' },
 ];
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB for images
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB for images (increased from 10MB)
 
 const ImageConverter: React.FC<ImageConverterProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);

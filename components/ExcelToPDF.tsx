@@ -23,7 +23,7 @@ const STEPS = [
     { label: 'Complete' },
 ];
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+const MAX_FILE_SIZE = 75 * 1024 * 1024; // 75MB (increased from 25MB)
 
 const ACCEPTED_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
 const ACCEPTED_MIMETYPES = [
@@ -47,8 +47,10 @@ const ExcelToPDF: React.FC<ExcelToPDFProps> = ({ tool, onBack }) => {
     const [errorMsg, setErrorMsg] = useState<string>('');
     const [isDragging, setIsDragging] = useState(false);
     const [resultBlob, setResultBlob] = useState<Uint8Array | null>(null);
+    const [isValidating, setIsValidating] = useState(false); // 🔒 RACE CONDITION FIX
     const fileInputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
+    const validationIdRef = useRef<number>(0); // Track validation ID to prevent race conditions
 
     const isProcessing = state === ProcessState.CONVERTING;
     useWakeLock(isProcessing);
@@ -62,15 +64,36 @@ const ExcelToPDF: React.FC<ExcelToPDFProps> = ({ tool, onBack }) => {
         ? (file ? 0 : -1)
         : state === ProcessState.CONVERTING ? 1 : 2;
 
+    /**
+     * 🔒 RACE CONDITION FIX: Validate file with async race condition protection
+     *
+     * Problem: User could select file A, then file B before A's validation completes
+     * Solution: Track validation ID and ignore stale validation results
+     */
     const validateAndSetFile = useCallback((selectedFile: File) => {
+        // Increment validation ID for this new validation
+        const currentValidationId = ++validationIdRef.current;
+
         if (!isValidSpreadsheet(selectedFile)) {
             setErrorMsg('Please select a valid spreadsheet file (.xlsx, .xls, or .csv).');
+            setIsValidating(false);
+            return;
+        }
+        // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid spreadsheet file.');
+            setIsValidating(false);
             return;
         }
         if (selectedFile.size > MAX_FILE_SIZE) {
-            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 25MB.`);
+            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 75MB.`);
+            setIsValidating(false);
             return;
         }
+
+        // Show validating state
+        setIsValidating(true);
+        setErrorMsg('');
 
         // Magic byte validation: xlsx/xls are ZIP archives (PK header)
         // CSV files are plain text, so we skip magic bytes for .csv
@@ -78,6 +101,11 @@ const ExcelToPDF: React.FC<ExcelToPDFProps> = ({ tool, onBack }) => {
         if (!name.endsWith('.csv')) {
             const reader = new FileReader();
             reader.onload = () => {
+                // 🔒 RACE CONDITION FIX: Ignore if this validation is stale
+                if (currentValidationId !== validationIdRef.current) {
+                    return; // A newer file was selected, ignore this result
+                }
+
                 const arr = new Uint8Array(reader.result as ArrayBuffer);
                 // ZIP magic bytes: PK\x03\x04
                 if (arr.length >= 4 && arr[0] === 0x50 && arr[1] === 0x4B && arr[2] === 0x03 && arr[3] === 0x04) {
@@ -87,12 +115,19 @@ const ExcelToPDF: React.FC<ExcelToPDFProps> = ({ tool, onBack }) => {
                     setProgress(0);
                     setProgressStatus('');
                     setResultBlob(null);
+                    setIsValidating(false);
                 } else {
                     setErrorMsg('This file does not appear to be a valid Excel file (invalid file header).');
+                    setIsValidating(false);
                 }
             };
             reader.onerror = () => {
+                // 🔒 RACE CONDITION FIX: Ignore if this validation is stale
+                if (currentValidationId !== validationIdRef.current) {
+                    return;
+                }
                 setErrorMsg('Failed to read the file. Please try selecting it again.');
+                setIsValidating(false);
             };
             reader.readAsArrayBuffer(selectedFile.slice(0, 4));
         } else {
@@ -102,6 +137,7 @@ const ExcelToPDF: React.FC<ExcelToPDFProps> = ({ tool, onBack }) => {
             setProgress(0);
             setProgressStatus('');
             setResultBlob(null);
+            setIsValidating(false);
         }
     }, []);
 

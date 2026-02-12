@@ -354,25 +354,85 @@ export const RotatePdfConfig: React.FC<RotatePdfConfigProps> = ({
             </label>
 
             {config.pageSelection === 'specific' && (
-              <input
-                type="text"
-                placeholder="e.g., 1, 3-5, 7"
-                style={{
-                  width: '100%',
-                  marginTop: '12px',
-                  padding: '10px 12px',
-                  border: '1px solid var(--config-border)',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  color: 'var(--text-secondary)',
-                  backgroundColor: 'var(--config-surface)',
-                  outline: 'none',
-                }}
-                onChange={(e) => {
-                  const pages = e.target.value.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p));
-                  updateConfig({ pageNumbers: pages });
-                }}
-              />
+              <div>
+                <input
+                  type="text"
+                  placeholder="e.g., 1, 3-5, 7"
+                  defaultValue={config.pageNumbers?.join(', ') || ''}
+                  style={{
+                    width: '100%',
+                    marginTop: '12px',
+                    padding: '10px 12px',
+                    border: '1px solid var(--config-border)',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'var(--config-surface)',
+                    outline: 'none',
+                  }}
+                  onChange={(e) => {
+                    const input = e.target.value.trim();
+                    if (!input) {
+                      updateConfig({ pageNumbers: [] });
+                      return;
+                    }
+
+                    // 🔒 SECURITY: Validate page numbers
+                    const pages: number[] = [];
+                    const invalidPages: number[] = [];
+
+                    input.split(',').forEach(part => {
+                      const trimmed = part.trim();
+
+                      // Handle ranges (e.g., "3-5")
+                      if (trimmed.includes('-')) {
+                        const [start, end] = trimmed.split('-').map(n => parseInt(n.trim()));
+                        if (!isNaN(start) && !isNaN(end) && start > 0 && end >= start) {
+                          for (let i = start; i <= end; i++) {
+                            if (pageCount > 0 && i > pageCount) {
+                              invalidPages.push(i);
+                            } else if (i > 0 && !pages.includes(i)) {
+                              pages.push(i);
+                            }
+                          }
+                        }
+                      } else {
+                        // Handle single page numbers
+                        const page = parseInt(trimmed);
+                        if (!isNaN(page) && page > 0) {
+                          if (pageCount > 0 && page > pageCount) {
+                            invalidPages.push(page);
+                          } else if (!pages.includes(page)) {
+                            pages.push(page);
+                          }
+                        }
+                      }
+                    });
+
+                    // Validate all pages are within range
+                    if (invalidPages.length > 0) {
+                      console.warn(`⚠️ Invalid page numbers (exceed total ${pageCount}):`, invalidPages);
+                    }
+
+                    // Sort pages in ascending order
+                    pages.sort((a, b) => a - b);
+                    updateConfig({ pageNumbers: pages });
+                  }}
+                />
+                {pageCount > 0 && config.pageNumbers && config.pageNumbers.length > 0 && (
+                  <div style={{
+                    marginTop: '8px',
+                    fontSize: '12px',
+                    color: config.pageNumbers.some(p => p > pageCount) ? 'var(--error)' : 'var(--text-tertiary)'
+                  }}>
+                    {config.pageNumbers.some(p => p > pageCount) ? (
+                      <>⚠️ Some pages exceed document page count ({pageCount})</>
+                    ) : (
+                      <>✓ {config.pageNumbers.length} page{config.pageNumbers.length !== 1 ? 's' : ''} selected (max: {pageCount})</>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

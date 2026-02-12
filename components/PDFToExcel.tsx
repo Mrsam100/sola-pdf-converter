@@ -23,7 +23,7 @@ const STEPS = [
     { label: 'Complete' },
 ];
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB (increased from 50MB)
 
 const PDFToExcel: React.FC<PDFToExcelProps> = ({ tool, onBack }) => {
     const [state, setState] = useState<ProcessState>(ProcessState.IDLE);
@@ -57,8 +57,13 @@ const PDFToExcel: React.FC<PDFToExcelProps> = ({ tool, onBack }) => {
             setErrorMsg('Please select a valid PDF file.');
             return;
         }
+        // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+        if (selectedFile.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
+            return;
+        }
         if (selectedFile.size > MAX_FILE_SIZE) {
-            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 50MB.`);
+            setErrorMsg(`File is too large (${formatFileSize(selectedFile.size)}). Maximum size is 150MB.`);
             return;
         }
         setFile(selectedFile);

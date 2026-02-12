@@ -99,11 +99,23 @@ function detectRows(items: TextItem[], tolerance: number): TableRow[] {
 function extractTableFromItems(items: TextItem[]): string[][] {
     if (items.length === 0) return [];
 
-    // Determine clustering tolerance based on average font size
-    const avgFontSize = items.reduce((s, i) => s + i.fontSize, 0) / items.length;
-    const rowTolerance = avgFontSize * 0.4;
-    const colTolerance = avgFontSize * 1.5;
+    /**
+     * 🔒 ROBUSTNESS FIX: Use median font size instead of average
+     *
+     * Problem: Mixed fonts (e.g., headers=16px, body=10px) cause average=13px
+     *          which is wrong for both header and body clustering
+     * Solution: Use median which is robust to outliers + fallback tolerances
+     */
+    // Calculate median font size (more robust than average for mixed fonts)
+    const fontSizes = items.map(i => i.fontSize).sort((a, b) => a - b);
+    const medianFontSize = fontSizes[Math.floor(fontSizes.length / 2)];
 
+    // Use median as base, but add min/max bounds for safety
+    const baseFontSize = Math.max(8, Math.min(medianFontSize, 20)); // Clamp between 8-20px
+    const rowTolerance = baseFontSize * 0.4;
+    const colTolerance = baseFontSize * 1.5;
+
+    // Detect columns and rows with robust tolerance
     const columns = detectColumns(items, colTolerance);
     const rows = detectRows(items, rowTolerance);
 

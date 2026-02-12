@@ -157,6 +157,11 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
             setErrorMsg('Please select a valid PDF file');
             return;
         }
+        // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+        if (file.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
+            return;
+        }
         if (file.size > 50 * 1024 * 1024) {
             setErrorMsg('File is too large. Maximum size is 50 MB');
             return;
@@ -175,6 +180,11 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
         if (!file) return;
         if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
             setErrorMsg('Please select a valid PDF file');
+            return;
+        }
+        // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+        if (file.size === 0) {
+            setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
             return;
         }
         if (file.size > 50 * 1024 * 1024) {
@@ -199,8 +209,17 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
 
             const { pdfjsLib } = await import('../services/pdfConfig');
             const ab = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+            const pdf = await pdfjsLib.getDocument({
+                data: ab,
+                maxImageSize: 50 * 1024 * 1024, // 50MB max image size
+                isEvalSupported: false, // Disable eval() for security
+                useSystemFonts: false, // Prevent font-based attacks
+            }).promise;
 
+            // Destroy old PDF document to prevent memory leak
+            if (pdfDocProxyRef.current) {
+                pdfDocProxyRef.current.destroy();
+            }
             pdfDocProxyRef.current = pdf;
             setSelectedFile(file);
             setTotalPages(pdf.numPages);
@@ -210,7 +229,16 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
             setHistoryIndex(-1);
             setSelectedElementId(null);
         } catch (err) {
-            setErrorMsg('Failed to load PDF. The file may be corrupted or password-protected.');
+            const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+            if (errorMsg.includes('password') || errorMsg.includes('encrypted')) {
+                setErrorMsg('Cannot edit password-protected or encrypted PDFs. Please remove the password first.');
+            } else if (errorMsg.includes('Invalid PDF structure') || errorMsg.includes('corrupted')) {
+                setErrorMsg('PDF file is corrupted or invalid. Please try a different file.');
+            } else if (errorMsg.includes('memory') || errorMsg.includes('allocation')) {
+                setErrorMsg('PDF is too large and exceeds available memory. Try a smaller file.');
+            } else {
+                setErrorMsg(`Failed to load PDF: ${errorMsg}`);
+            }
         } finally {
             setLoading(false);
         }
@@ -230,7 +258,9 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
             target.width = width;
             target.height = height;
             const ctx = target.getContext('2d');
-            if (!ctx) return;
+            if (!ctx) {
+                throw new Error('Failed to get canvas 2D context. Your browser may not support canvas rendering.');
+            }
 
             // Draw base PDF
             ctx.drawImage(canvas, 0, 0);
@@ -353,8 +383,9 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                     });
                 }
             }
-        } catch {
-            // Render failed — silently handled, page loading spinner will clear
+        } catch (err) {
+            // Render failed — log for debugging but don't show error to user (page loading spinner will clear)
+            console.error('[EditPDF] Failed to render page:', err);
         } finally {
             setPageLoading(false);
         }
@@ -572,9 +603,12 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                         },
                     };
                     const truncated = prev.slice(0, historyIndex + 1);
-                    return [...truncated, cmd];
+                    const next = [...truncated, cmd];
+                    // Respect MAX_HISTORY limit
+                    if (next.length > MAX_HISTORY) next.shift();
+                    return next;
                 });
-                setHistoryIndex(prev => prev + 1);
+                setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY - 1));
             }
             setMovingElement(null);
             setIsInteracting(false);
@@ -820,7 +854,7 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
     // ──────────────────────────────────
     // Image upload
     // ──────────────────────────────────
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -830,15 +864,78 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
             toast.error('Please select a PNG or JPEG image. WebP is not supported for PDF embedding.');
             return;
         }
+
+        // 🔒 VALIDATION FIX: Check for 0-byte files
+        if (file.size === 0) {
+            toast.error('The selected file is empty (0 bytes). Please select a valid image file.');
+            return;
+        }
+
         // Validate image size (max 10 MB)
         if (file.size > 10 * 1024 * 1024) {
             toast.error('Image is too large. Maximum size is 10 MB.');
             return;
         }
 
+        // Magic byte validation: check actual file format
+        try {
+            const headerBytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+            const isPNG = headerBytes[0] === 0x89 && headerBytes[1] === 0x50 && headerBytes[2] === 0x4E && headerBytes[3] === 0x47;
+            const isJPEG = headerBytes[0] === 0xFF && headerBytes[1] === 0xD8 && headerBytes[2] === 0xFF;
+
+            if (!isPNG && !isJPEG) {
+                toast.error('Invalid image file. Only PNG and JPEG images are supported.');
+                return;
+            }
+        } catch (err) {
+            toast.error('Failed to read image file. Please try again.');
+            return;
+        }
+
+        // 🔒 SECURITY FIX: Validate image dimensions to prevent memory issues
+        // Prevents huge images (e.g., 50000x50000px) from crashing the browser
+        const img = new Image();
+        const dimensionCheck = await new Promise<{ valid: boolean; error?: string }>((resolve) => {
+            img.onload = () => {
+                const MAX_DIMENSION = 10000; // Max 10,000px on any side
+                const MAX_PIXELS = 100_000_000; // Max 100 megapixels total
+
+                if (img.width > MAX_DIMENSION || img.height > MAX_DIMENSION) {
+                    URL.revokeObjectURL(img.src);
+                    resolve({
+                        valid: false,
+                        error: `Image dimensions too large (${img.width}×${img.height}px). Maximum is ${MAX_DIMENSION}px on any side.`
+                    });
+                } else if (img.width * img.height > MAX_PIXELS) {
+                    URL.revokeObjectURL(img.src);
+                    resolve({
+                        valid: false,
+                        error: `Image resolution too high (${((img.width * img.height) / 1_000_000).toFixed(1)}MP). Maximum is 100MP.`
+                    });
+                } else {
+                    URL.revokeObjectURL(img.src);
+                    resolve({ valid: true });
+                }
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(img.src);
+                resolve({ valid: false, error: 'Failed to load image. The file may be corrupted.' });
+            };
+            img.src = URL.createObjectURL(file);
+        });
+
+        if (!dimensionCheck.valid) {
+            toast.error(dimensionCheck.error || 'Invalid image dimensions.');
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = (ev) => {
-            const imageData = ev.target?.result as string;
+            const imageData = ev.target?.result;
+            if (typeof imageData !== 'string') {
+                toast.error('Failed to load image data. Please try again.');
+                return;
+            }
             const newImage: ImageElement = {
                 id: `img-${Date.now()}`,
                 pageNumber: currentPage,
@@ -854,6 +951,9 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
                 undo: () => setEditorState(s => ({ ...s, images: s.images.filter(i => i.id !== newImage.id) })),
             });
         };
+        reader.onerror = () => {
+            toast.error('Failed to read image file. Please try again.');
+        };
         reader.readAsDataURL(file);
     };
 
@@ -868,8 +968,17 @@ const EditPDF: React.FC<EditPDFProps> = ({ tool, onBack }) => {
             const filename = selectedFile.name.replace('.pdf', '_edited.pdf');
             downloadPDF(pdfBytes, filename);
             toast.success('PDF saved successfully!');
-        } catch {
-            toast.error('Failed to save PDF. Please try again.');
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+            if (errorMsg.includes('memory') || errorMsg.includes('allocation')) {
+                toast.error('Out of memory. Try reducing the number of edits or file size.');
+            } else if (errorMsg.includes('image format') || errorMsg.includes('Unsupported')) {
+                toast.error('Invalid image format detected. Only PNG and JPEG images are supported.');
+            } else if (errorMsg.includes('password') || errorMsg.includes('encrypted')) {
+                toast.error('Cannot save encrypted or password-protected PDFs.');
+            } else {
+                toast.error(`Failed to save PDF: ${errorMsg}`);
+            }
         } finally {
             setSaving(false);
         }

@@ -10,6 +10,7 @@ import { embedSignatures } from '../services/signPdfService';
 import { formatFileSize } from '../utils/formatFileSize';
 import { useWakeLock, usePageVisibility } from '../hooks/usePageVisibility';
 import { toast } from '../hooks/useToast';
+import { validateImage } from '../utils/magicByteValidator';
 import BackButton from './BackButton';
 
 interface SignPDFProps {
@@ -117,8 +118,13 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
       setErrorMsg('Please select a PDF file.');
       return false;
     }
-    if (f.size > 50 * 1024 * 1024) {
-      setErrorMsg(`File is too large (${formatFileSize(f.size)}). Maximum size is 50MB.`);
+    // 🔒 VALIDATION FIX: Check for 0-byte files to prevent wasted processing
+    if (f.size === 0) {
+      setErrorMsg('The selected file is empty (0 bytes). Please select a valid PDF file.');
+      return false;
+    }
+    if (f.size > 150 * 1024 * 1024) { // Increased from 50MB
+      setErrorMsg(`File is too large (${formatFileSize(f.size)}). Maximum size is 150MB.`);
       return false;
     }
     // Magic byte validation
@@ -262,18 +268,67 @@ const SignPDF: React.FC<SignPDFProps> = ({ tool, onBack }) => {
     setHasDrawn(false);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const f = e.target.files[0];
       if (imageInputRef.current) imageInputRef.current.value = '';
-      if (!f.type.startsWith('image/')) {
-        toast.error('Please select an image file (PNG, JPG).');
+
+      // 🔒 VALIDATION FIX: Check for 0-byte files
+      if (f.size === 0) {
+        toast.error('The selected file is empty (0 bytes). Please select a valid image file.');
         return;
       }
+
       if (f.size > 2 * 1024 * 1024) {
         toast.error('Signature image is too large. Maximum size is 2MB.');
         return;
       }
+
+      // 🔒 SECURITY FIX: Validate image using magic bytes instead of just MIME type
+      // This prevents malicious files from being uploaded by spoofing the MIME type
+      const validationResult = await validateImage(f);
+      if (!validationResult.valid) {
+        toast.error(validationResult.error || 'Invalid image file. Please select a valid PNG or JPG image.');
+        return;
+      }
+
+      // 🔒 SECURITY FIX: Validate image dimensions to prevent memory issues
+      // Prevents huge images (e.g., 50000x50000px) from crashing the browser
+      const img = new Image();
+      const dimensionCheck = await new Promise<{ valid: boolean; error?: string }>((resolve) => {
+        img.onload = () => {
+          const MAX_DIMENSION = 10000; // Max 10,000px on any side
+          const MAX_PIXELS = 100_000_000; // Max 100 megapixels total
+
+          if (img.width > MAX_DIMENSION || img.height > MAX_DIMENSION) {
+            URL.revokeObjectURL(img.src);
+            resolve({
+              valid: false,
+              error: `Image dimensions too large (${img.width}×${img.height}px). Maximum is ${MAX_DIMENSION}px on any side.`
+            });
+          } else if (img.width * img.height > MAX_PIXELS) {
+            URL.revokeObjectURL(img.src);
+            resolve({
+              valid: false,
+              error: `Image resolution too high (${((img.width * img.height) / 1_000_000).toFixed(1)}MP). Maximum is 100MP.`
+            });
+          } else {
+            URL.revokeObjectURL(img.src);
+            resolve({ valid: true });
+          }
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(img.src);
+          resolve({ valid: false, error: 'Failed to load image. The file may be corrupted.' });
+        };
+        img.src = URL.createObjectURL(f);
+      });
+
+      if (!dimensionCheck.valid) {
+        toast.error(dimensionCheck.error || 'Invalid image dimensions.');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (ev) => {
         if (mountedRef.current && ev.target?.result) {
